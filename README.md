@@ -68,7 +68,7 @@ docker compose exec app npm run build
 Run Vite dev server:
 
 ```bash
-docker compose exec app npm run dev -- --host 0.0.0.0 --port 5173
+docker compose exec app npm run dev
 ```
 
 Run tests:
@@ -88,3 +88,13 @@ docker compose exec app php artisan reverb:start --host=0.0.0.0 --port=8080
 - App: `http://localhost:8000`
 - Vite: `http://localhost:5173`
 - Reverb: `ws://localhost:8080`
+
+## Host configuration
+
+All external hosts are configured through `.env`:
+
+- `APP_URL` - backend URL
+- `VITE_DEV_SERVER_HMR_HOST` - host/domain for Vite HMR
+- `REVERB_HOST` / `VITE_REVERB_HOST` - websocket host/domain
+
+For production or remote dev, you only need to change values in `.env` instead of editing source files.

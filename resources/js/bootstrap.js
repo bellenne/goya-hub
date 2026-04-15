@@ -11,19 +11,18 @@ window.axios.defaults.withXSRFToken = true;
 window.Pusher = Pusher;
 
 const reverbKey = import.meta.env.VITE_REVERB_APP_KEY;
-const browserHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-const reverbHost = import.meta.env.VITE_REVERB_HOST === 'localhost'
-    ? '127.0.0.1'
-    : (import.meta.env.VITE_REVERB_HOST || browserHost);
+const reverbHost = import.meta.env.VITE_REVERB_HOST || window.location.hostname;
+const reverbPort = Number(import.meta.env.VITE_REVERB_PORT || 8080);
+const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || 'https';
 
 if (reverbKey) {
     window.Echo = new Echo({
         broadcaster: 'reverb',
         key: reverbKey,
         wsHost: reverbHost,
-        wsPort: Number(import.meta.env.VITE_REVERB_PORT || 8080),
-        wssPort: Number(import.meta.env.VITE_REVERB_PORT || 8080),
-        forceTLS: (import.meta.env.VITE_REVERB_SCHEME || 'https') === 'https',
+        wsPort: reverbPort,
+        wssPort: reverbPort,
+        forceTLS: reverbScheme === 'https',
         enabledTransports: ['ws'],
     });
 }
