@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\SessionStatus;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
+class GameSession extends Model
+{
+    protected $fillable = [
+        'game_id',
+        'title',
+        'invite_code',
+        'invite_token',
+        'status',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'status' => SessionStatus::class,
+        ];
+    }
+
+    public function game(): BelongsTo
+    {
+        return $this->belongsTo(Game::class);
+    }
+
+    public function participants(): HasMany
+    {
+        return $this->hasMany(SessionParticipant::class);
+    }
+
+    public function sceneState(): HasOne
+    {
+        return $this->hasOne(SessionSceneState::class, 'game_session_id');
+    }
+
+    public function diceRolls(): HasMany
+    {
+        return $this->hasMany(SessionDiceRoll::class, 'game_session_id');
+    }
+}
