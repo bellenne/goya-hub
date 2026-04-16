@@ -21,6 +21,31 @@ const fieldTypes = [
     { value: 'textarea', label: 'Большой текст' },
     { value: 'number', label: 'Число' },
 ];
+const normalizeBoolean = (value, fallback = false) => {
+    if (value === null || value === undefined || value === '') {
+        return fallback;
+    }
+
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+
+    const normalized = String(value).toLowerCase();
+
+    if (['1', 'true', 'on', 'yes'].includes(normalized)) {
+        return true;
+    }
+
+    if (['0', 'false', 'off', 'no'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+};
 
 const transliterationMap = {
     а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y',
@@ -53,15 +78,20 @@ const nextUniqueKey = (seed, prefix, usedKeys) => {
     return candidate;
 };
 
+const resolveKey = (existingKey, label, prefix, usedKeys, fallbackIndex) => {
+    const seed = slugify(existingKey) || slugify(label) || `${prefix}_${fallbackIndex}`;
+    return nextUniqueKey(seed, prefix, usedKeys);
+};
+
 const form = useForm({
     attributes: {
         points: props.template.attributes?.points ?? 0,
         items: clone(props.template.attributes?.items ?? []).map((item) => ({
             ...item,
+            player_editable: normalizeBoolean(item.player_editable, true),
             roll: {
-                enabled: item.roll?.enabled ?? true,
+                enabled: normalizeBoolean(item.roll?.enabled, true),
                 dice: item.roll?.dice ?? 'd20',
-                modifier_step: item.roll?.modifier_step ?? 2,
             },
         })),
     },
@@ -69,17 +99,20 @@ const form = useForm({
         points: 0,
         items: clone(props.template.skills?.items ?? []).map((skill) => ({
             ...skill,
-            default: Boolean(skill.default),
+            default: normalizeBoolean(skill.default),
+            player_editable: normalizeBoolean(skill.player_editable, true),
             subskills: (skill.subskills ?? []).map((subskill) => ({
                 ...subskill,
-                default: Boolean(subskill.default),
+                default: normalizeBoolean(subskill.default),
+                player_editable: normalizeBoolean(subskill.player_editable, true),
             })),
         })),
     },
     points: clone(props.template.points ?? {}),
     extra_fields: clone(props.template.extra_fields ?? []).map((field) => ({
         ...field,
-        required: Boolean(field.required),
+        required: normalizeBoolean(field.required),
+        player_editable: normalizeBoolean(field.player_editable, true),
     })),
 });
 
@@ -103,7 +136,8 @@ const addAttribute = () => {
         default: 0,
         min: 0,
         max: 10,
-        roll: { enabled: true, dice: 'd20', modifier_step: 2 },
+        player_editable: true,
+        roll: { enabled: true, dice: 'd20' },
     });
 };
 
@@ -112,6 +146,7 @@ const addSkill = () => {
         label: 'Новый навык',
         key: null,
         default: false,
+        player_editable: true,
         subskills: [],
     });
 };
@@ -122,6 +157,7 @@ const addSubskill = (skill) => {
         label: 'Новый поднавык',
         key: null,
         default: false,
+        player_editable: true,
     });
 };
 
@@ -131,6 +167,7 @@ const addExtraField = () => {
         key: null,
         type: 'text',
         required: false,
+        player_editable: true,
         default: '',
         min: 0,
         max: 10,
@@ -143,36 +180,68 @@ const removeAt = (items, index) => {
     items.splice(index, 1);
 };
 
-const prepareKeys = () => {
+const buildPayload = () => {
     const attributeKeys = new Set();
-    form.attributes.items.forEach((item, index) => {
-        item.key = item.key || nextUniqueKey(item.label || `attribute_${index + 1}`, 'attribute', attributeKeys);
-    });
+    const attributes = form.attributes.items.map((item, index) => ({
+        ...clone(item),
+        key: resolveKey(item.key, item.label, 'attribute', attributeKeys, index + 1),
+        player_editable: normalizeBoolean(item.player_editable, true),
+        roll: {
+            enabled: normalizeBoolean(item.roll?.enabled, true),
+            dice: item.roll?.dice ?? 'd20',
+        },
+    }));
 
     const skillKeys = new Set();
-    form.skills.items.forEach((skill, index) => {
-        skill.key = skill.key || nextUniqueKey(skill.label || `skill_${index + 1}`, 'skill', skillKeys);
+    const skills = form.skills.items.map((skill, index) => {
+        const key = resolveKey(skill.key, skill.label, 'skill', skillKeys, index + 1);
 
-        (skill.subskills ?? []).forEach((subskill, subIndex) => {
-            subskill.key = subskill.key || nextUniqueKey(
-                `${skill.label || skill.key}_${subskill.label || `subskill_${subIndex + 1}`}`,
-                `${skill.key}_subskill`,
-                skillKeys,
-            );
-        });
+        return {
+            ...clone(skill),
+            key,
+            default: normalizeBoolean(skill.default),
+            player_editable: normalizeBoolean(skill.player_editable, true),
+            subskills: (skill.subskills ?? []).map((subskill, subIndex) => ({
+                ...clone(subskill),
+                key: resolveKey(
+                    subskill.key,
+                    `${skill.label || key}_${subskill.label || `subskill_${subIndex + 1}`}`,
+                    `${key}_subskill`,
+                    skillKeys,
+                    subIndex + 1,
+                ),
+                default: normalizeBoolean(subskill.default),
+                player_editable: normalizeBoolean(subskill.player_editable, true),
+            })),
+        };
     });
 
     const extraFieldKeys = new Set();
-    form.extra_fields.forEach((field, index) => {
-        field.key = field.key || nextUniqueKey(field.label || `field_${index + 1}`, 'field', extraFieldKeys);
-    });
+    const extra_fields = form.extra_fields.map((field, index) => ({
+        ...clone(field),
+        key: resolveKey(field.key, field.label, 'field', extraFieldKeys, index + 1),
+        required: normalizeBoolean(field.required),
+        player_editable: normalizeBoolean(field.player_editable, true),
+    }));
+
+    return {
+        attributes: {
+            points: Number(form.attributes.points ?? 0),
+            items: attributes,
+        },
+        skills: {
+            points: 0,
+            items: skills,
+        },
+        points: clone(form.points ?? {}),
+        extra_fields,
+    };
 };
 
 const submit = () => {
-    form.skills.points = 0;
-    prepareKeys();
+    const payload = buildPayload();
 
-    form.patch(route('games.character-template.update', props.game.id), {
+    form.transform(() => payload).patch(route('games.character-template.update', props.game.id), {
         preserveScroll: true,
         preserveState: true,
     });
@@ -317,20 +386,25 @@ const submit = () => {
                                         </button>
                                     </div>
 
-                                    <div class="mt-4 grid gap-4 rounded-[1.15rem] border border-stone-700/50 bg-stone-950/60 p-4 md:grid-cols-[minmax(0,1fr)_8rem_10rem] md:items-end">
+                                    <div class="mt-4 grid gap-4 rounded-[1.15rem] border border-stone-700/50 bg-stone-950/60 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem] md:items-end">
                                         <label class="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-200 transition hover:bg-white/[0.06]">
                                             <input v-model="item.roll.enabled" type="checkbox" class="rounded border-amber-300/20 bg-stone-950 text-amber-500" />
                                             Участвует в бросках
+                                        </label>
+                                        <label class="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-200 transition hover:bg-white/[0.06]">
+                                            <input
+                                                :checked="item.player_editable === false"
+                                                type="checkbox"
+                                                class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
+                                                @change="item.player_editable = !$event.target.checked"
+                                            />
+                                            Запретить игрокам редактирование
                                         </label>
                                         <div>
                                             <InputLabel value="Кубик" />
                                             <select v-model="item.roll.dice" class="fantasy-select mt-2 block w-full">
                                                 <option v-for="dice in diceOptions" :key="dice" :value="dice">{{ dice }}</option>
                                             </select>
-                                        </div>
-                                        <div>
-                                            <InputLabel value="Шаг модификатора" />
-                                            <input v-model.number="item.roll.modifier_step" type="number" min="1" class="fantasy-input mt-2 block w-full" />
                                         </div>
                                     </div>
                                 </article>
@@ -380,10 +454,19 @@ const submit = () => {
                                         </div>
                                     </div>
 
-                                    <div class="mt-4 grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_7rem_7rem] lg:items-end">
+                                    <div class="mt-4 grid gap-4 lg:grid-cols-[auto_auto_minmax(0,1fr)_7rem_7rem] lg:items-end">
                                         <label class="flex items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-300 transition hover:bg-white/[0.06]">
                                             <input v-model="field.required" type="checkbox" class="rounded border-amber-300/20 bg-stone-950 text-amber-500" />
                                             Обязательное поле
+                                        </label>
+                                        <label class="flex items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-300 transition hover:bg-white/[0.06]">
+                                            <input
+                                                :checked="field.player_editable === false"
+                                                type="checkbox"
+                                                class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
+                                                @change="field.player_editable = !$event.target.checked"
+                                            />
+                                            Запретить игрокам редактирование
                                         </label>
                                         <div>
                                             <InputLabel value="Значение по умолчанию" />
@@ -436,6 +519,15 @@ const submit = () => {
                                                 <span class="relative h-6 w-11 rounded-full bg-stone-700/80 transition after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:bg-teal-500/70 peer-checked:after:translate-x-5" />
                                                 Есть по умолчанию
                                             </label>
+                                            <label class="inline-flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-stone-200 transition hover:bg-white/[0.08]">
+                                                <input
+                                                    :checked="skill.player_editable === false"
+                                                    type="checkbox"
+                                                    class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
+                                                    @change="skill.player_editable = !$event.target.checked"
+                                                />
+                                                Запретить игрокам
+                                            </label>
                                             <button
                                                 type="button"
                                                 class="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-400/20"
@@ -469,6 +561,15 @@ const submit = () => {
                                                     <input v-model="subskill.default" type="checkbox" class="peer sr-only" />
                                                     <span class="relative h-6 w-11 rounded-full bg-stone-700/80 transition after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:bg-teal-500/70 peer-checked:after:translate-x-5" />
                                                     Активен по умолчанию
+                                                </label>
+                                                <label class="inline-flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-stone-200 transition hover:bg-white/[0.08]">
+                                                    <input
+                                                        :checked="subskill.player_editable === false"
+                                                        type="checkbox"
+                                                        class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
+                                                        @change="subskill.player_editable = !$event.target.checked"
+                                                    />
+                                                    Запретить игрокам
                                                 </label>
                                                 <button
                                                     type="button"

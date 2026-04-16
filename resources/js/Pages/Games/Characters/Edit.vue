@@ -16,11 +16,36 @@ const props = defineProps({
 });
 
 const page = usePage();
+const normalizeBoolean = (value, fallback = false) => {
+    if (value === null || value === undefined || value === '') {
+        return fallback;
+    }
+
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+
+    const normalized = String(value).toLowerCase();
+
+    if (['1', 'true', 'on', 'yes'].includes(normalized)) {
+        return true;
+    }
+
+    if (['0', 'false', 'off', 'no'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+};
 
 const buildSectionValues = (items, existingValues = {}, type = 'default') =>
     items.reduce((acc, item) => {
         if (type === 'skill') {
-            acc[item.key] = Boolean(existingValues[item.key] ?? item.default ?? false);
+            acc[item.key] = normalizeBoolean(existingValues[item.key], normalizeBoolean(item.default));
             return acc;
         }
 
@@ -89,9 +114,7 @@ const modifierPreview = (item, value) => {
         return 'Без модификатора';
     }
 
-    const step = Number(item.roll.modifier_step || 1);
-    const diff = Number(value ?? item.default ?? 0) - Number(item.default ?? 0);
-    const modifier = Math.trunc(diff / step);
+    const modifier = Number(value ?? item.default ?? 0);
 
     return `${item.roll.dice} ${modifier >= 0 ? '+' : ''}${modifier}`;
 };
@@ -257,6 +280,7 @@ const modifierPreview = (item, value) => {
                                             <h3 class="text-lg font-semibold text-amber-50">{{ item.label }}</h3>
                                             <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">
                                                 База {{ item.default ?? 0 }} · пределы {{ item.min ?? '-' }} / {{ item.max ?? '-' }}
+                                                <span v-if="item.player_editable === false"> · только GM</span>
                                             </p>
                                         </div>
                                         <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-stone-300">
@@ -271,10 +295,12 @@ const modifierPreview = (item, value) => {
                                             type="number"
                                             :min="item.min ?? undefined"
                                             :max="item.max ?? undefined"
+                                            :disabled="item.player_editable === false"
                                             class="block w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-lg font-semibold text-white shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
                                         />
                                         <p class="text-sm leading-6 text-stone-400">
-                                            Настройте значение для этого персонажа. Модификатор рассчитывается автоматически по параметрам шаблона.
+                                            <span v-if="item.player_editable === false">Это значение может менять только GM.</span>
+                                            <span v-else>Настройте значение для этого персонажа. Модификатор рассчитывается автоматически по параметрам шаблона.</span>
                                         </p>
                                     </div>
 
@@ -308,7 +334,8 @@ const modifierPreview = (item, value) => {
                                         <div>
                                             <h3 class="text-lg font-semibold text-teal-50">{{ skill.label }}</h3>
                                             <p class="mt-2 text-sm leading-6 text-stone-400">
-                                                Включите навык, если персонаж действительно владеет этим направлением.
+                                                <span v-if="skill.player_editable === false">Этот навык может менять только GM.</span>
+                                                <span v-else>Включите навык, если персонаж действительно владеет этим направлением.</span>
                                             </p>
                                         </div>
                                         <div
@@ -321,6 +348,7 @@ const modifierPreview = (item, value) => {
                                                 :id="`skill-${skill.key}`"
                                                 v-model="form.skill_values[skill.key]"
                                                 type="checkbox"
+                                                :disabled="skill.player_editable === false"
                                                 class="h-4 w-4 rounded border-stone-500 bg-stone-950 text-emerald-400 focus:ring-emerald-300/40"
                                             />
                                             {{ form.skill_values[skill.key] ? 'Есть' : 'Нет' }}
@@ -336,7 +364,9 @@ const modifierPreview = (item, value) => {
                                         >
                                             <div>
                                                 <div class="font-medium text-stone-100">{{ subskill.label }}</div>
-                                                <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Поднавык</div>
+                                                <div class="text-xs uppercase tracking-[0.18em] text-stone-500">
+                                                    Поднавык<span v-if="subskill.player_editable === false"> · только GM</span>
+                                                </div>
                                             </div>
                                             <div
                                                 class="inline-flex items-center gap-3 rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition"
@@ -348,6 +378,7 @@ const modifierPreview = (item, value) => {
                                                     :id="`subskill-${subskill.key}`"
                                                     v-model="form.skill_values[subskill.key]"
                                                     type="checkbox"
+                                                    :disabled="subskill.player_editable === false"
                                                     class="h-4 w-4 rounded border-stone-500 bg-stone-950 text-emerald-400 focus:ring-emerald-300/40"
                                                 />
                                                 {{ form.skill_values[subskill.key] ? 'Есть' : 'Нет' }}
@@ -396,6 +427,7 @@ const modifierPreview = (item, value) => {
                                                 {{ item.type === 'number' ? 'Числовое поле' : 'Текстовое поле' }}
                                                 <span v-if="item.required"> · обязательно</span>
                                                 <span v-if="item.type === 'number' && item.points_pool"> · пул {{ item.points_pool }}</span>
+                                                <span v-if="item.player_editable === false"> · только GM</span>
                                             </p>
                                         </div>
                                     </div>
@@ -408,15 +440,20 @@ const modifierPreview = (item, value) => {
                                             type="number"
                                             :min="item.min ?? undefined"
                                             :max="item.max ?? undefined"
+                                            :disabled="item.player_editable === false"
                                             class="block w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-lg font-semibold text-white shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
                                         />
                                         <textarea
                                             v-else
                                             :id="`extra-${item.key}`"
                                             v-model="form.extra_field_values[item.key]"
+                                            :disabled="item.player_editable === false"
                                             class="block min-h-32 w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-sm text-stone-100 shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
                                         />
                                     </div>
+                                    <p v-if="item.player_editable === false" class="mt-3 text-xs uppercase tracking-[0.18em] text-stone-500">
+                                        Это поле редактируется только GM.
+                                    </p>
 
                                     <InputError class="mt-3" :message="fieldError(`extra_field_values.${item.key}`)" />
                                 </article>

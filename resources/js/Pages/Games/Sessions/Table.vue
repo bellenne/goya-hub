@@ -8,7 +8,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     game: { type: Object, required: true },
@@ -20,6 +20,31 @@ const props = defineProps({
 });
 
 const page = usePage();
+const normalizeBoolean = (value, fallback = false) => {
+    if (value === null || value === undefined || value === '') {
+        return fallback;
+    }
+
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+
+    const normalized = String(value).toLowerCase();
+
+    if (['1', 'true', 'on', 'yes'].includes(normalized)) {
+        return true;
+    }
+
+    if (['0', 'false', 'off', 'no'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+};
 const diceOptions = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 let sceneChannel = null;
 let rollsChannel = null;
@@ -92,6 +117,14 @@ const showBackgroundUploadModal = ref(false);
 const backgroundSearch = ref('');
 const npcSearch = ref('');
 const hoveredContext = ref(null);
+const showImagePreviewModal = ref(false);
+const previewImageEntity = ref(null);
+const chatItems = ref([]);
+const chatMessage = ref('');
+const isChatExpanded = ref(false);
+const isChatHovered = ref(false);
+const isChatInputFocused = ref(false);
+const chatScroll = ref(null);
 const npcAddQuantity = ref(1);
 const npcAddGroup = ref(false);
 const backgroundForm = useForm({
@@ -148,6 +181,7 @@ const isSpeaking = (type, id, sceneNpcId = null) => {
 };
 
 const templateItems = (section) => ownCharacterTemplate.value?.[section]?.items ?? [];
+const skillTemplateItems = computed(() => templateItems('skills').flatMap((skill) => [skill, ...(skill.subskills ?? [])]));
 const extraTemplateItems = computed(() => ownCharacterTemplate.value?.extra_fields ?? []);
 const playerRollActor = computed(() => {
     if (!props.scene.own_character) return null;
@@ -191,15 +225,11 @@ const selectedRollAttribute = computed(() => selectedRollActor.value?.rollable_a
 const selectedAttributeModifier = computed(() => {
     if (!selectedRollActor.value || !selectedRollAttribute.value) return 0;
 
-    const currentValue = Number(
+    return Number(
         selectedRollActor.value.attribute_values?.[selectedRollAttribute.value.key]
         ?? selectedRollAttribute.value.default
         ?? 0,
     );
-    const baseValue = Number(selectedRollAttribute.value.default ?? 0);
-    const step = Math.max(1, Number(selectedRollAttribute.value.modifier_step ?? 1));
-
-    return Math.trunc((currentValue - baseValue) / step);
 });
 const finalRollModifier = computed(() => Number(diceForm.modifier || 0) + selectedAttributeModifier.value);
 const selectedRollAttributeLabel = computed(() => {
@@ -209,11 +239,27 @@ const selectedRollAttributeLabel = computed(() => {
     return `${selectedRollAttribute.value.label} (${modifier >= 0 ? '+' : ''}${modifier})`;
 });
 const selectedRollAttributes = computed(() => selectedRollActor.value?.rollable_attributes ?? []);
+const currentUser = computed(() => page.props.auth?.user ?? null);
 const characterValue = (values, item) => values?.[item.key] ?? item.default ?? '';
+const skillValue = (values, item) => normalizeBoolean(values?.[item.key], normalizeBoolean(item.default)) ? 'Есть' : 'Нет';
 const numberIds = (ids) => [...new Set((ids ?? []).map(Number))];
 const hasNpcState = (ids, npcId) => numberIds(ids).includes(Number(npcId));
 const isCharacterHidden = (characterId) => numberIds(sceneForm.hidden_character_ids).includes(Number(characterId));
 const signedNumber = (value) => `${Number(value) >= 0 ? '+' : ''}${Number(value)}`;
+const baseRollNotation = (roll) => `${roll.dice_count}${roll.dice_type}`;
+const rollFormulaText = (roll) => {
+    const parts = [baseRollNotation(roll)];
+
+    if (roll.attribute_label) {
+        parts.push(`+ (х-ка ${Number(roll.attribute_modifier ?? 0)})`);
+    }
+
+    if (Number(roll.manual_modifier ?? 0) !== 0) {
+        parts.push(`+ (М ${Number(roll.manual_modifier ?? 0)})`);
+    }
+
+    return parts.join(' ');
+};
 const rollActorName = (roll) => roll.actor_name ?? roll.user.name;
 const rollPerformedByLabel = (roll) => (
     roll.actor_name && roll.actor_name !== roll.user.name ? `Бросок выполнил ${roll.user.name}` : ''
@@ -225,7 +271,7 @@ const rollManualModifierText = (roll) => (
     Number(roll.manual_modifier ?? 0) !== 0 ? `Ручной модификатор ${signedNumber(roll.manual_modifier ?? 0)}` : ''
 );
 const rollBreakdownText = (roll) => {
-    const parts = [`${roll.notation} -> значения: ${roll.roll_values.join(', ')}`];
+    const parts = [`${rollFormulaText(roll)} -> значения: ${roll.roll_values.join(', ')}`];
 
     if (roll.attribute_label) {
         parts.push(rollAttributeText(roll));
@@ -272,18 +318,28 @@ const openCharacterModal = (tab = 'stats', character = props.scene.own_character
     selectedCharacter.value = character;
     characterModalTab.value = tab;
     if (props.can_manage_sessions && character) {
-        gmSheetForm.attribute_values = { ...(character.attribute_values ?? {}) };
-        gmSheetForm.skill_values = { ...(character.skill_values ?? {}) };
-        gmSheetForm.extra_field_values = { ...(character.extra_field_values ?? {}) };
+        gmSheetForm.attribute_values = Object.fromEntries(templateItems('attributes').map((item) => [
+            item.key,
+            character.attribute_values?.[item.key] ?? item.default ?? 0,
+        ]));
+        gmSheetForm.skill_values = Object.fromEntries(skillTemplateItems.value.map((item) => [
+            item.key,
+            normalizeBoolean(character.skill_values?.[item.key], normalizeBoolean(item.default)),
+        ]));
+        gmSheetForm.extra_field_values = Object.fromEntries(extraTemplateItems.value.map((item) => [
+            item.key,
+            character.extra_field_values?.[item.key] ?? item.default ?? (item.type === 'number' ? 0 : ''),
+        ]));
     }
     showCharacterModal.value = true;
 };
 
-const showContextMenu = (event, kind, entity) => {
+const showContextMenu = (event, kind, entity, viewerOnly = false) => {
     const rect = event.currentTarget.getBoundingClientRect();
     hoveredContext.value = {
         kind,
         entity,
+        viewerOnly,
         x: kind === 'enemy' ? rect.left - 190 : rect.right + 8,
         y: Math.min(rect.top, window.innerHeight - 220),
     };
@@ -298,6 +354,90 @@ const hideContextMenu = () => {
 
 const keepContextMenu = () => {
     if (contextMenuTimeout) clearTimeout(contextMenuTimeout);
+};
+
+const canPreviewImage = (entity) => Boolean(entity?.avatar_url);
+
+const openImagePreview = (entity) => {
+    if (!canPreviewImage(entity)) return;
+
+    previewImageEntity.value = entity;
+    showImagePreviewModal.value = true;
+    hoveredContext.value = null;
+};
+
+const scrollChatToBottom = () => {
+    nextTick(() => {
+        if (!chatScroll.value) return;
+        chatScroll.value.scrollTop = chatScroll.value.scrollHeight;
+    });
+};
+
+const appendChatMessage = (payload) => {
+    if (!payload?.id || !payload?.user_name || !payload?.message) {
+        return;
+    }
+
+    if (chatItems.value.some((item) => item.id === payload.id)) {
+        return;
+    }
+
+    chatItems.value = [
+        ...chatItems.value,
+        {
+            id: payload.id,
+            user_name: payload.user_name,
+            message: payload.message,
+            sent_at: payload.sent_at ?? new Date().toISOString(),
+        },
+    ].slice(-80);
+
+    scrollChatToBottom();
+};
+
+const sendChatMessage = () => {
+    const message = String(chatMessage.value ?? '').trim().slice(0, 1000);
+
+    if (!message || !currentUser.value) {
+        return;
+    }
+
+    const payload = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        user_name: currentUser.value.name,
+        message,
+        sent_at: new Date().toISOString(),
+    };
+
+    appendChatMessage(payload);
+    sceneChannel?.whisper?.('session-chat', payload);
+    chatMessage.value = '';
+    isChatExpanded.value = true;
+};
+
+const handleChatMouseEnter = () => {
+    isChatHovered.value = true;
+};
+
+const handleChatMouseLeave = () => {
+    isChatHovered.value = false;
+
+    if (!isChatInputFocused.value) {
+        isChatExpanded.value = false;
+    }
+};
+
+const handleChatInputFocus = () => {
+    isChatInputFocused.value = true;
+    isChatExpanded.value = true;
+};
+
+const handleChatInputBlur = () => {
+    isChatInputFocused.value = false;
+
+    if (!isChatHovered.value) {
+        isChatExpanded.value = false;
+    }
 };
 
 const openDiceModal = (diceType) => {
@@ -319,7 +459,7 @@ const syncInventoryForms = (characters) => {
 const animateRoll = (roll) => {
     if (!roll) return;
     highlightedRollId.value = roll.id;
-    rollingText.value = `${roll.actor_name ?? roll.user.name} бросает ${roll.notation}`;
+    rollingText.value = `${roll.actor_name ?? roll.user.name} бросает ${rollFormulaText(roll)}`;
     rollResultOverlay.value = roll;
     rollLogItems.value = [
         roll,
@@ -621,7 +761,9 @@ watch(showNpcLibraryModal, (isOpen) => {
 
 onMounted(() => {
     if (!window.Echo) return;
-    sceneChannel = window.Echo.private(props.scene.channel).listen('.session.scene.updated', refreshScene);
+    sceneChannel = window.Echo.private(props.scene.channel)
+        .listen('.session.scene.updated', refreshScene)
+        .listenForWhisper('session-chat', appendChatMessage);
     rollsChannel = window.Echo.private(props.rolls.channel).listen('.session.dice.rolled', refreshRolls);
     inventoryChannel = window.Echo.private(props.inventory.channel).listen('.session.inventory.updated', refreshInventory);
 });
@@ -666,9 +808,11 @@ onBeforeUnmount(() => {
 
             <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-8 pt-5">
                 <div class="pointer-events-auto flex max-w-5xl gap-3 overflow-hidden rounded-lg border border-amber-300/20 bg-stone-950/45 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                    <article v-for="npc in topEncounteredNpcs" :key="`hud-met-${npc.id}`" class="flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''">
-                        <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-12 w-12 rounded-lg object-cover" />
-                        <div v-else class="grid h-12 w-12 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-sm font-semibold text-amber-100">{{ npc.name?.charAt(0) }}</div>
+                    <article v-for="npc in topEncounteredNpcs" :key="`hud-met-${npc.id}`" class="flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
+                        <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
+                            <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[4.5rem] max-w-[4.5rem] rounded-md object-contain" />
+                        </div>
+                        <div v-else class="grid h-[4.5rem] w-[4.5rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-sm font-semibold text-amber-100">{{ npc.name?.charAt(0) }}</div>
                         <p class="line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}</p>
                     </article>
                     <p v-if="topEncounteredNpcs.length === 0" class="px-4 py-3 text-sm text-stone-400">Встреченных NPC пока нет.</p>
@@ -676,27 +820,36 @@ onBeforeUnmount(() => {
             </div>
 
             <aside class="pointer-events-none absolute bottom-32 left-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:left-8 xl:w-36">
-                <article v-if="scene.own_character" class="pointer-events-auto rounded-lg border border-amber-300/25 bg-stone-950/55 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md" :class="isSpeaking('character', scene.own_character.id) ? 'ring-2 ring-amber-300/70' : ''">
-                    <img v-if="scene.own_character.avatar_url" :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="mx-auto h-16 w-16 rounded-lg object-cover" />
-                    <div v-else class="mx-auto grid h-16 w-16 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-xl font-semibold text-amber-100">{{ scene.own_character.name?.charAt(0) }}</div>
+                <article v-if="scene.own_character" class="pointer-events-auto rounded-lg border border-amber-300/25 bg-stone-950/55 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md" :class="[isSpeaking('character', scene.own_character.id) ? 'ring-2 ring-amber-300/70' : '', isCharacterHidden(scene.own_character.id) ? 'opacity-65' : '']" @mouseenter="showContextMenu($event, 'character', scene.own_character, true)" @mouseleave="hideContextMenu">
+                    <div v-if="scene.own_character.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
+                        <img :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
+                    </div>
+                    <div v-else class="mx-auto grid h-[5.75rem] w-[5.75rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-xl font-semibold text-amber-100">{{ scene.own_character.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ scene.own_character.name }}</p>
+                    <p v-if="isCharacterHidden(scene.own_character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">hidden for players</p>
                 </article>
-                <article v-for="teammate in scene.teammates" :key="`hud-party-${teammate.id}`" class="pointer-events-auto rounded-lg border border-stone-600/35 bg-stone-950/50 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('character', teammate.id) ? 'ring-2 ring-amber-300/70' : ''">
-                    <img v-if="teammate.avatar_url" :src="teammate.avatar_url" :alt="teammate.name" class="mx-auto h-14 w-14 rounded-lg object-cover" />
-                    <div v-else class="mx-auto grid h-14 w-14 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ teammate.name?.charAt(0) }}</div>
+                <article v-for="teammate in scene.teammates" :key="`hud-party-${teammate.id}`" class="pointer-events-auto rounded-lg border border-stone-600/35 bg-stone-950/50 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('character', teammate.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'character', teammate, true)" @mouseleave="hideContextMenu">
+                    <div v-if="teammate.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
+                        <img :src="teammate.avatar_url" :alt="teammate.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
+                    </div>
+                    <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ teammate.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ teammate.name }}</p>
                 </article>
-                <article v-for="npc in alliedNpcs" :key="`hud-ally-${npc.id}`" class="pointer-events-auto rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''">
-                    <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="mx-auto h-14 w-14 rounded-lg object-cover" />
-                    <div v-else class="mx-auto grid h-14 w-14 place-items-center rounded-lg border border-emerald-300/20 bg-stone-900 text-lg font-semibold text-emerald-100">{{ npc.name?.charAt(0) }}</div>
+                <article v-for="npc in alliedNpcs" :key="`hud-ally-${npc.id}`" class="pointer-events-auto rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
+                    <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-emerald-300/20 bg-stone-900/60 p-1">
+                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
+                    </div>
+                    <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-emerald-300/20 bg-stone-900 text-lg font-semibold text-emerald-100">{{ npc.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}</p>
                 </article>
             </aside>
 
             <aside class="pointer-events-none absolute bottom-32 right-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:right-8 xl:w-36">
-                <article v-for="npc in enemyNpcs" :key="`hud-enemy-${npc.id}`" class="pointer-events-auto rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''">
-                    <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="mx-auto h-16 w-16 rounded-lg object-cover" />
-                    <div v-else class="mx-auto grid h-16 w-16 place-items-center rounded-lg border border-red-300/20 bg-stone-900 text-xl font-semibold text-red-100">{{ npc.name?.charAt(0) }}</div>
+                <article v-for="npc in enemyNpcs" :key="`hud-enemy-${npc.id}`" class="pointer-events-auto rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'enemy', npc, true)" @mouseleave="hideContextMenu">
+                    <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-red-300/20 bg-stone-900/60 p-1">
+                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
+                    </div>
+                    <div v-else class="mx-auto grid h-[5.75rem] w-[5.75rem] place-items-center rounded-lg border border-red-300/20 bg-stone-900 text-xl font-semibold text-red-100">{{ npc.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}</p>
                 </article>
             </aside>
@@ -705,7 +858,7 @@ onBeforeUnmount(() => {
                 <div v-if="rollResultOverlay" class="pointer-events-auto min-w-80 rounded-lg border border-amber-300/35 bg-stone-950/70 p-6 text-center shadow-[0_24px_90px_rgba(0,0,0,0.62)] ring-1 ring-white/10 backdrop-blur-md">
                     <p class="fantasy-kicker">{{ rollActorName(rollResultOverlay) }}</p>
                     <p class="mt-2 text-5xl font-bold text-amber-100">{{ rollResultOverlay.total }}</p>
-                    <p class="mt-2 text-sm font-semibold uppercase tracking-[0.18em] text-stone-300">{{ rollResultOverlay.notation }}</p>
+                    <p class="mt-2 text-sm font-semibold uppercase tracking-[0.18em] text-stone-300">{{ rollFormulaText(rollResultOverlay) }}</p>
                     <p v-if="rollAttributeText(rollResultOverlay)" class="mt-2 text-xs uppercase tracking-[0.16em] text-amber-200">{{ rollAttributeText(rollResultOverlay) }}</p>
                     <p v-if="rollPerformedByLabel(rollResultOverlay)" class="mt-2 text-xs text-stone-400">{{ rollPerformedByLabel(rollResultOverlay) }}</p>
                     <div class="mt-5 flex flex-wrap justify-center gap-2">
@@ -734,12 +887,12 @@ onBeforeUnmount(() => {
                     <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Roll log</p>
                     <article v-for="roll in rollLogItems" :key="`hud-log-${roll.id}`" class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:hidden">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
-                        <span class="text-stone-300"> {{ roll.notation }} -> </span>
+                        <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
                         <span class="font-semibold text-amber-50">{{ roll.total }}</span>
                     </article>
                     <article v-for="roll in rolls.items.slice(0, 12)" :key="`hud-full-log-${roll.id}`" class="mb-2 hidden rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:block">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
-                        <span class="text-stone-300"> {{ roll.notation }} -> </span>
+                        <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
                         <span class="font-semibold text-amber-50">{{ roll.total }}</span>
                     </article>
                     <p v-if="rollLogItems.length === 0 && rolls.items.length === 0" class="text-sm text-stone-400">Бросков пока нет.</p>
@@ -756,8 +909,10 @@ onBeforeUnmount(() => {
             <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-8 pt-5">
                 <div class="pointer-events-auto flex max-w-5xl gap-3 overflow-visible rounded-lg border border-amber-300/20 bg-stone-950/45 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
                     <article v-for="npc in topEncounteredNpcs" :key="`gm-met-${npc.id}`" class="group relative flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
-                        <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-12 w-12 rounded-lg object-cover" />
-                        <div v-else class="grid h-12 w-12 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-sm font-semibold text-amber-100">{{ npc.name?.charAt(0) }}</div>
+                        <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
+                            <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[4.5rem] max-w-[4.5rem] rounded-md object-contain" />
+                        </div>
+                        <div v-else class="grid h-[4.5rem] w-[4.5rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-sm font-semibold text-amber-100">{{ npc.name?.charAt(0) }}</div>
                         <p class="line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}<span v-if="npc.quantity > 1"> x{{ npc.quantity }}</span></p></article>
                     <p v-if="topEncounteredNpcs.length === 0" class="px-4 py-3 text-sm text-stone-400">Встреченных NPC пока нет.</p>
                 </div>
@@ -783,35 +938,61 @@ onBeforeUnmount(() => {
 
             <aside class="pointer-events-none absolute bottom-32 left-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:left-8 xl:w-36">
                 <article v-for="character in inventory.characters" :key="`gm-party-${character.id}`" class="pointer-events-auto group relative rounded-lg border border-amber-300/25 bg-stone-950/55 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md" :class="[isSpeaking('character', character.id) ? 'ring-2 ring-amber-300/70' : '', isCharacterHidden(character.id) ? 'opacity-65' : '']" @mouseenter="showContextMenu($event, 'character', character)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('character', character.id)">
-                    <img v-if="character.avatar_url" :src="character.avatar_url" :alt="character.name" class="mx-auto h-14 w-14 rounded-lg object-cover" />
-                    <div v-else class="mx-auto grid h-14 w-14 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ character.name?.charAt(0) }}</div>
+                    <div v-if="character.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
+                        <img :src="character.avatar_url" :alt="character.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
+                    </div>
+                    <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ character.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ character.name }}</p>
                     <p v-if="isCharacterHidden(character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">hidden for players</p></article>
                 <article v-for="npc in alliedNpcs" :key="`gm-ally-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
-                    <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="mx-auto h-14 w-14 rounded-lg object-cover" />
-                    <div v-else class="mx-auto grid h-14 w-14 place-items-center rounded-lg border border-emerald-300/20 bg-stone-900 text-lg font-semibold text-emerald-100">{{ npc.name?.charAt(0) }}</div>
+                    <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-emerald-300/20 bg-stone-900/60 p-1">
+                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
+                    </div>
+                    <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-emerald-300/20 bg-stone-900 text-lg font-semibold text-emerald-100">{{ npc.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}<span v-if="npc.quantity > 1"> x{{ npc.quantity }}</span></p></article>
             </aside>
 
             <aside class="pointer-events-none absolute bottom-32 right-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:right-8 xl:w-36">
                 <article v-for="npc in enemyNpcs" :key="`gm-enemy-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'enemy', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
-                    <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="mx-auto h-16 w-16 rounded-lg object-cover" />
-                    <div v-else class="mx-auto grid h-16 w-16 place-items-center rounded-lg border border-red-300/20 bg-stone-900 text-xl font-semibold text-red-100">{{ npc.name?.charAt(0) }}</div>
+                    <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-red-300/20 bg-stone-900/60 p-1">
+                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
+                    </div>
+                    <div v-else class="mx-auto grid h-[5.75rem] w-[5.75rem] place-items-center rounded-lg border border-red-300/20 bg-stone-900 text-xl font-semibold text-red-100">{{ npc.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}<span v-if="npc.quantity > 1"> x{{ npc.quantity }}</span></p></article>
             </aside>
 
             <div v-if="hoveredContext" class="fixed z-[90] w-48 rounded-lg border border-amber-300/20 bg-stone-950/95 p-2 text-left shadow-2xl backdrop-blur-md" :style="{ left: `${hoveredContext.x}px`, top: `${hoveredContext.y}px` }" @mouseenter="keepContextMenu" @mouseleave="hideContextMenu">
                 <template v-if="hoveredContext.kind === 'character'">
+                    <button
+                        class="block w-full rounded-md px-2 py-2 text-left text-xs transition"
+                        :class="canPreviewImage(hoveredContext.entity) ? 'text-stone-200 hover:bg-amber-300/10' : 'cursor-not-allowed text-stone-500'"
+                        :disabled="!canPreviewImage(hoveredContext.entity)"
+                        @click="openImagePreview(hoveredContext.entity)"
+                    >
+                        Посмотреть изображение
+                    </button>
+                    <template v-if="!hoveredContext.viewerOnly">
                     <button class="block w-full rounded-md px-2 py-2 text-left text-xs text-stone-200 hover:bg-amber-300/10" @click="openCharacterModal('inventory', hoveredContext.entity); hideContextMenu()">Инвентарь</button>
                     <button class="block w-full rounded-md px-2 py-2 text-left text-xs text-stone-200 hover:bg-amber-300/10" @click="openCharacterModal('stats', hoveredContext.entity); hideContextMenu()">Статы</button>
                     <button class="block w-full rounded-md px-2 py-2 text-left text-xs text-stone-200 hover:bg-amber-300/10" @click="toggleCharacterVisibility(hoveredContext.entity.id); hideContextMenu()">{{ isCharacterHidden(hoveredContext.entity.id) ? 'Показать игрокам' : 'Скрыть со сцены' }}</button>
+                    </template>
                 </template>
                 <template v-else>
+                    <button
+                        class="block w-full rounded-md px-2 py-2 text-left text-xs transition"
+                        :class="canPreviewImage(hoveredContext.entity) ? 'text-stone-200 hover:bg-amber-300/10' : 'cursor-not-allowed text-stone-500'"
+                        :disabled="!canPreviewImage(hoveredContext.entity)"
+                        @click="openImagePreview(hoveredContext.entity)"
+                    >
+                        Посмотреть изображение
+                    </button>
+                    <template v-if="!hoveredContext.viewerOnly">
                     <button class="block w-full rounded-md px-2 py-1 text-left text-xs text-stone-200 hover:bg-amber-300/10" @click="setNpcSceneState(hoveredContext.entity, { present: false, encountered: true }); hideContextMenu()">Удалить со сцены</button>
                     <button class="block w-full rounded-md px-2 py-1 text-left text-xs text-stone-200 hover:bg-amber-300/10" @click="setNpcSceneState(hoveredContext.entity, { present: false, encountered: false }); hideContextMenu()">Скрыть</button>
                     <button v-if="hoveredContext.entity.type !== 'ally'" class="block w-full rounded-md px-2 py-1 text-left text-xs text-emerald-100 hover:bg-emerald-300/10" @click="moveNpcTo(hoveredContext.entity, 'ally'); hideContextMenu()">В союзники</button>
                     <button v-if="hoveredContext.entity.type !== 'neutral'" class="block w-full rounded-md px-2 py-1 text-left text-xs text-sky-100 hover:bg-sky-300/10" @click="moveNpcTo(hoveredContext.entity, 'neutral'); hideContextMenu()">В нейтралы</button>
                     <button v-if="hoveredContext.entity.type !== 'enemy'" class="block w-full rounded-md px-2 py-1 text-left text-xs text-red-100 hover:bg-red-300/10" @click="moveNpcTo(hoveredContext.entity, 'enemy'); hideContextMenu()">Во враги</button>
+                    </template>
                 </template>
             </div>
 
@@ -819,7 +1000,7 @@ onBeforeUnmount(() => {
                 <div v-if="rollResultOverlay" class="pointer-events-auto min-w-80 rounded-lg border border-amber-300/35 bg-stone-950/70 p-6 text-center shadow-[0_24px_90px_rgba(0,0,0,0.62)] ring-1 ring-white/10 backdrop-blur-md">
                     <p class="fantasy-kicker">{{ rollActorName(rollResultOverlay) }}</p>
                     <p class="mt-2 text-5xl font-bold text-amber-100">{{ rollResultOverlay.total }}</p>
-                    <p class="mt-2 text-sm font-semibold uppercase tracking-[0.18em] text-stone-300">{{ rollResultOverlay.notation }}</p>
+                    <p class="mt-2 text-sm font-semibold uppercase tracking-[0.18em] text-stone-300">{{ rollFormulaText(rollResultOverlay) }}</p>
                     <p v-if="rollAttributeText(rollResultOverlay)" class="mt-2 text-xs uppercase tracking-[0.16em] text-amber-200">{{ rollAttributeText(rollResultOverlay) }}</p>
                     <p v-if="rollPerformedByLabel(rollResultOverlay)" class="mt-2 text-xs text-stone-400">{{ rollPerformedByLabel(rollResultOverlay) }}</p>
                     <div class="mt-5 flex flex-wrap justify-center gap-2">
@@ -845,16 +1026,79 @@ onBeforeUnmount(() => {
                     <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Roll log</p>
                     <article v-for="roll in rollLogItems" :key="`gm-hud-log-${roll.id}`" class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:hidden">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
-                        <span class="text-stone-300"> {{ roll.notation }} -> </span>
+                        <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
                         <span class="font-semibold text-amber-50">{{ roll.total }}</span>
                     </article>
                     <article v-for="roll in rolls.items.slice(0, 12)" :key="`gm-hud-full-log-${roll.id}`" class="mb-2 hidden rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:block">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
-                        <span class="text-stone-300"> {{ roll.notation }} -> </span>
+                        <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
                         <span class="font-semibold text-amber-50">{{ roll.total }}</span>
                     </article>
                     <p v-if="rollLogItems.length === 0 && rolls.items.length === 0" class="text-sm text-stone-400">Бросков пока нет.</p>
                 </div>
+            </div>
+        </div>
+
+        <div v-if="hoveredContext && !can_manage_sessions" class="fixed z-[90] w-48 rounded-lg border border-amber-300/20 bg-stone-950/95 p-2 text-left shadow-2xl backdrop-blur-md" :style="{ left: `${hoveredContext.x}px`, top: `${hoveredContext.y}px` }" @mouseenter="keepContextMenu" @mouseleave="hideContextMenu">
+            <template v-if="hoveredContext.kind === 'character'">
+                <button
+                    class="block w-full rounded-md px-2 py-2 text-left text-xs transition"
+                    :class="canPreviewImage(hoveredContext.entity) ? 'text-stone-200 hover:bg-amber-300/10' : 'cursor-not-allowed text-stone-500'"
+                    :disabled="!canPreviewImage(hoveredContext.entity)"
+                    @click="openImagePreview(hoveredContext.entity)"
+                >
+                    Посмотреть изображение
+                </button>
+            </template>
+            <template v-else>
+                <button
+                    class="block w-full rounded-md px-2 py-2 text-left text-xs transition"
+                    :class="canPreviewImage(hoveredContext.entity) ? 'text-stone-200 hover:bg-amber-300/10' : 'cursor-not-allowed text-stone-500'"
+                    :disabled="!canPreviewImage(hoveredContext.entity)"
+                    @click="openImagePreview(hoveredContext.entity)"
+                >
+                    Посмотреть изображение
+                </button>
+            </template>
+        </div>
+
+        <div
+            class="fixed bottom-6 transition-all duration-200"
+            :class="isChatExpanded ? 'right-6 z-[80] w-[min(48rem,calc(100vw-12rem))]' : 'right-[25rem] z-[70] w-80'"
+            @mouseenter="handleChatMouseEnter"
+            @mouseleave="handleChatMouseLeave"
+        >
+            <div class="pointer-events-auto rounded-lg border border-amber-300/20 bg-stone-950/45 p-3 text-sm text-stone-200 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md">
+                <p class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">Чат</p>
+                <div
+                    ref="chatScroll"
+                    class="overflow-y-auto rounded-lg border border-transparent bg-stone-950/20 pr-1 select-text"
+                    :class="isChatExpanded ? 'mb-3 h-64' : 'mb-3 h-24'"
+                >
+                    <article
+                        v-for="item in chatItems"
+                        :key="`chat-${item.id}`"
+                        class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 last:mb-0"
+                    >
+                        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-amber-100">{{ item.user_name }}</p>
+                        <p class="mt-1 whitespace-pre-wrap break-words text-stone-200">{{ item.message }}</p>
+                    </article>
+                    <p v-if="chatItems.length === 0" class="px-1 py-2 text-sm text-stone-400">Сообщений пока нет.</p>
+                </div>
+
+                <form class="flex items-end gap-2" @submit.prevent="sendChatMessage">
+                    <input
+                        v-model="chatMessage"
+                        type="text"
+                        maxlength="1000"
+                        class="fantasy-input block w-full"
+                        placeholder="Написать сообщение..."
+                        @focus="handleChatInputFocus"
+                        @blur="handleChatInputBlur"
+                        @keydown.enter.prevent="sendChatMessage"
+                    />
+                    <PrimaryButton :disabled="!chatMessage.trim()">Отправить</PrimaryButton>
+                </form>
             </div>
         </div>
 
@@ -1441,10 +1685,14 @@ onBeforeUnmount(() => {
                     </section>
                     <section>
                         <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Skills</h3>
-                        <div class="mt-3 grid gap-3 sm:grid-cols-3">
-                            <label v-for="item in templateItems('skills')" :key="`gm-skill-${item.key}`" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                            <label v-for="item in skillTemplateItems" :key="`gm-skill-${item.key}`" class="flex items-center justify-between gap-3 rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
                                 <span class="text-sm text-stone-400">{{ item.label }}</span>
-                                <input v-model.number="gmSheetForm.skill_values[item.key]" type="number" class="fantasy-input mt-2 block w-full" />
+                                <span class="inline-flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-stone-200">
+                                    <input v-model="gmSheetForm.skill_values[item.key]" type="checkbox" class="peer sr-only" />
+                                    <span class="relative h-6 w-11 rounded-full bg-stone-700/80 transition after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:bg-teal-500/70 peer-checked:after:translate-x-5" />
+                                    {{ gmSheetForm.skill_values[item.key] ? 'Есть' : 'Нет' }}
+                                </span>
                             </label>
                         </div>
                     </section>
@@ -1474,9 +1722,9 @@ onBeforeUnmount(() => {
                     <section>
                         <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Skills</h3>
                         <div class="mt-3 grid gap-3 sm:grid-cols-3">
-                            <div v-for="item in templateItems('skills')" :key="item.key" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
+                            <div v-for="item in skillTemplateItems" :key="item.key" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
                                 <p class="text-sm text-stone-400">{{ item.label }}</p>
-                                <p class="mt-1 text-2xl font-semibold text-amber-50">{{ characterValue(activeCharacter?.skill_values, item) }}</p>
+                                <p class="mt-1 text-2xl font-semibold text-amber-50">{{ skillValue(activeCharacter?.skill_values, item) }}</p>
                             </div>
                         </div>
                     </section>
@@ -1541,6 +1789,20 @@ onBeforeUnmount(() => {
                     </div>
                     <p v-else class="text-sm text-stone-400">Inventory is empty.</p>
                 </div>
+            </div>
+        </Modal>
+
+        <Modal :show="showImagePreviewModal" max-width="fit" @close="showImagePreviewModal = false">
+            <div class="relative flex flex-col items-center gap-5 bg-stone-950 p-6 text-stone-100">
+                <SecondaryButton class="absolute right-6 top-6" @click="showImagePreviewModal = false">Закрыть</SecondaryButton>
+                <h2 class="px-16 text-center text-xl font-semibold text-amber-50">{{ previewImageEntity?.name ?? 'Персонаж' }}</h2>
+                <img
+                    v-if="previewImageEntity?.avatar_url"
+                    :src="previewImageEntity.avatar_url"
+                    :alt="previewImageEntity.name"
+                    class="h-[80vh] max-w-[90vw] rounded-xl object-contain"
+                />
+                <p v-else class="text-sm text-stone-400">Изображение не загружено.</p>
             </div>
         </Modal>
     </AuthenticatedLayout>

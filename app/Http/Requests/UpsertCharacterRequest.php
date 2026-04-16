@@ -48,7 +48,7 @@ class UpsertCharacterRequest extends FormRequest
         foreach ($template['extra_fields'] as $item) {
             $fieldRules = [];
 
-            if (($item['required'] ?? false) === true) {
+            if (($item['required'] ?? false) === true && ($item['player_editable'] ?? true) === true) {
                 $fieldRules[] = 'required';
             } else {
                 $fieldRules[] = 'nullable';
@@ -71,6 +71,74 @@ class UpsertCharacterRequest extends FormRequest
         }
 
         return $rules;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        /** @var Game|null $game */
+        $game = $this->route('game');
+
+        if (! $game instanceof Game) {
+            return;
+        }
+
+        $template = $game->resolvedCharacterTemplate();
+        $currentCharacter = $this->user() === null
+            ? null
+            : $game->characters()->where('user_id', $this->user()->id)->first();
+        $templateAttributes = $template['attributes']['items'] ?? [];
+        $templateSkills = $this->skillItems($template);
+        $templateExtraFields = $template['extra_fields'] ?? [];
+
+        $attributeValues = [];
+        foreach ($templateAttributes as $item) {
+            $defaultValue = data_get($currentCharacter?->attribute_values ?? [], $item['key'], $item['default'] ?? 0);
+
+            $attributeValues[$item['key']] = ($item['player_editable'] ?? true) === true
+                ? (int) $this->input("attribute_values.{$item['key']}", $defaultValue)
+                : (int) $defaultValue;
+        }
+        if ($templateAttributes === []) {
+            $attributeValues = collect($this->input('attribute_values', []))
+                ->map(fn ($value) => $value !== null && $value !== '' ? (int) $value : null)
+                ->all();
+        }
+
+        $skillValues = [];
+        foreach ($templateSkills as $item) {
+            $defaultValue = data_get($currentCharacter?->skill_values ?? [], $item['key'], $item['default'] ?? false);
+
+            $skillValues[$item['key']] = ($item['player_editable'] ?? true) === true
+                ? $this->normalizeBoolean($this->input("skill_values.{$item['key']}", $defaultValue), (bool) $defaultValue)
+                : (bool) $defaultValue;
+        }
+        if ($templateSkills === []) {
+            $skillValues = collect($this->input('skill_values', []))
+                ->map(fn ($value) => $this->normalizeBoolean($value))
+                ->all();
+        }
+
+        $extraFieldValues = [];
+        foreach ($templateExtraFields as $item) {
+            $default = $item['default'] ?? ($item['type'] === 'number' ? 0 : '');
+            $currentValue = data_get($currentCharacter?->extra_field_values ?? [], $item['key'], $default);
+            $value = ($item['player_editable'] ?? true) === true
+                ? $this->input("extra_field_values.{$item['key']}", $currentValue)
+                : $currentValue;
+
+            $extraFieldValues[$item['key']] = $item['type'] === 'number' && $value !== null && $value !== ''
+                ? (int) $value
+                : $value;
+        }
+        if ($templateExtraFields === []) {
+            $extraFieldValues = $this->input('extra_field_values', []);
+        }
+
+        $this->merge([
+            'attribute_values' => $attributeValues,
+            'skill_values' => $skillValues,
+            'extra_field_values' => $extraFieldValues,
+        ]);
     }
 
     public function withValidator(Validator $validator): void
@@ -154,5 +222,16 @@ class UpsertCharacterRequest extends FormRequest
             ->flatMap(fn (array $skill) => [$skill, ...($skill['subskills'] ?? [])])
             ->values()
             ->all();
+    }
+
+    protected function normalizeBoolean(mixed $value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        $normalized = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        return $normalized ?? $default;
     }
 }

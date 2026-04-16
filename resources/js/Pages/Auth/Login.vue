@@ -4,6 +4,7 @@ import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 
@@ -78,7 +79,12 @@ const submit = () => {
                 </label>
             </div>
 
-            <div class="mt-4 flex items-center justify-end">
+            <div class="mt-4 flex items-center justify-between gap-4">
+                <Link :href="route('register')">
+                    <SecondaryButton>Create account</SecondaryButton>
+                </Link>
+
+                <div class="flex items-center">
                 <Link
                     v-if="canResetPassword"
                     :href="route('password.request')"
@@ -94,6 +100,7 @@ const submit = () => {
                 >
                     Log in
                 </PrimaryButton>
+                </div>
             </div>
         </form>
     </GuestLayout>

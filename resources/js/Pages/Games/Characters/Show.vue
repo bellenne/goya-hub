@@ -18,6 +18,31 @@ const props = defineProps({
 });
 
 const page = usePage();
+const normalizeBoolean = (value, fallback = false) => {
+    if (value === null || value === undefined || value === '') {
+        return fallback;
+    }
+
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+
+    const normalized = String(value).toLowerCase();
+
+    if (['1', 'true', 'on', 'yes'].includes(normalized)) {
+        return true;
+    }
+
+    if (['0', 'false', 'off', 'no'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+};
 
 const catalogForm = useForm({
     item_id: '',
@@ -33,7 +58,10 @@ const customForm = useForm({
 
 const skillGroups = computed(() => props.template.skills.items ?? []);
 const flatSkillItems = computed(() => skillGroups.value.flatMap((skill) => [skill, ...(skill.subskills ?? [])]));
-const enabledSkillCount = computed(() => flatSkillItems.value.filter((item) => props.character.skill_values?.[item.key] ?? item.default ?? false).length);
+const enabledSkillCount = computed(() => flatSkillItems.value.filter((item) => normalizeBoolean(
+    props.character.skill_values?.[item.key],
+    normalizeBoolean(item.default),
+)).length);
 const attributeCount = computed(() => props.template.attributes.items.length);
 const inventoryCount = computed(() => props.character.inventory_items.length);
 
@@ -69,17 +97,17 @@ const removeInventoryItem = (inventoryItem) => {
     );
 };
 
-const skillValueLabel = (item) => (props.character.skill_values?.[item.key] ?? item.default ?? false) ? 'Есть' : 'Нет';
+const skillValueLabel = (item) => normalizeBoolean(
+    props.character.skill_values?.[item.key],
+    normalizeBoolean(item.default),
+) ? 'Есть' : 'Нет';
 const fieldValue = (item) => props.character.extra_field_values?.[item.key] ?? '—';
 const modifierPreview = (item) => {
     if (!item.roll?.enabled) {
         return 'Без броска';
     }
 
-    const value = Number(props.character.attribute_values?.[item.key] ?? item.default ?? 0);
-    const base = Number(item.default ?? 0);
-    const step = Number(item.roll.modifier_step || 1);
-    const modifier = Math.trunc((value - base) / step);
+    const modifier = Number(props.character.attribute_values?.[item.key] ?? item.default ?? 0);
 
     return `${item.roll.dice} ${modifier >= 0 ? '+' : ''}${modifier}`;
 };

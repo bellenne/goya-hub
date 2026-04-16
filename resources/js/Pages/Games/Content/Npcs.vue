@@ -22,6 +22,31 @@ const props = defineProps({
 const page = usePage();
 const deleteModalNpc = ref(null);
 const avatarInputKey = ref(0);
+const normalizeBoolean = (value, fallback = false) => {
+    if (value === null || value === undefined || value === '') {
+        return fallback;
+    }
+
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+
+    const normalized = String(value).toLowerCase();
+
+    if (['1', 'true', 'on', 'yes'].includes(normalized)) {
+        return true;
+    }
+
+    if (['0', 'false', 'off', 'no'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+};
 const flattenSkillItems = (items) => items.flatMap((skill) => [skill, ...(skill.subskills ?? [])]);
 const templateAttributeItems = computed(() => props.template.attributes?.items ?? []);
 const templateSkillItems = computed(() => flattenSkillItems(props.template.skills?.items ?? []));
@@ -34,7 +59,7 @@ const buildSheetState = (npc = null) => ({
     ])),
     skill_values: Object.fromEntries(templateSkillItems.value.map((item) => [
         item.key,
-        Boolean(npc?.skill_values?.[item.key] ?? item.default ?? false),
+        normalizeBoolean(npc?.skill_values?.[item.key], normalizeBoolean(item.default)),
     ])),
     extra_field_values: Object.fromEntries(templateExtraItems.value.map((item) => [
         item.key,
@@ -96,7 +121,7 @@ const setAvatar = (event) => {
 
 const submit = () => {
     if (isEditing.value) {
-        form.patch(route('games.npcs.update', [props.game.id, activeNpc.value.id]), {
+        form.transform((data) => ({ ...data, _method: 'patch' })).post(route('games.npcs.update', [props.game.id, activeNpc.value.id]), {
             forceFormData: true,
             preserveScroll: true,
         });
@@ -104,7 +129,7 @@ const submit = () => {
         return;
     }
 
-    form.post(route('games.npcs.store', props.game.id), {
+    form.transform((data) => data).post(route('games.npcs.store', props.game.id), {
         forceFormData: true,
         preserveScroll: true,
     });

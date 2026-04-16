@@ -4,18 +4,11 @@ namespace App\Http\Requests;
 
 use App\Models\Game;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Validator;
 
 class UpdateCharacterTemplateRequest extends FormRequest
 {
-    protected array $transliterationMap = [
-        'а' => 'a', 'б' => 'b', 'в' => 'v', 'г' => 'g', 'д' => 'd', 'е' => 'e', 'ё' => 'e',
-        'ж' => 'zh', 'з' => 'z', 'и' => 'i', 'й' => 'y', 'к' => 'k', 'л' => 'l', 'м' => 'm',
-        'н' => 'n', 'о' => 'o', 'п' => 'p', 'р' => 'r', 'с' => 's', 'т' => 't', 'у' => 'u',
-        'ф' => 'f', 'х' => 'h', 'ц' => 'ts', 'ч' => 'ch', 'ш' => 'sh', 'щ' => 'sch', 'ъ' => '',
-        'ы' => 'y', 'ь' => '', 'э' => 'e', 'ю' => 'yu', 'я' => 'ya',
-    ];
-
     public function authorize(): bool
     {
         /** @var Game $game */
@@ -30,29 +23,32 @@ class UpdateCharacterTemplateRequest extends FormRequest
             'attributes.points' => ['required', 'integer', 'min:0', 'max:100'],
             'attributes.items' => ['required', 'array', 'min:0', 'max:24'],
             'attributes.items.*.label' => ['required', 'string', 'max:80'],
-            'attributes.items.*.key' => ['required', 'string', 'regex:/^[a-z][a-z0-9_]*$/', 'max:60'],
+            'attributes.items.*.key' => ['nullable', 'string', 'max:60'],
             'attributes.items.*.default' => ['required', 'integer', 'min:-100', 'max:100'],
             'attributes.items.*.min' => ['nullable', 'integer', 'min:-100', 'max:100'],
             'attributes.items.*.max' => ['nullable', 'integer', 'min:-100', 'max:100'],
+            'attributes.items.*.player_editable' => ['boolean'],
             'attributes.items.*.roll.enabled' => ['boolean'],
             'attributes.items.*.roll.dice' => ['required', 'in:d4,d6,d8,d10,d12,d20,d100'],
-            'attributes.items.*.roll.modifier_step' => ['required', 'integer', 'min:1', 'max:20'],
 
             'skills.points' => ['required', 'integer', 'min:0', 'max:100'],
             'skills.items' => ['required', 'array', 'min:0', 'max:40'],
             'skills.items.*.label' => ['required', 'string', 'max:80'],
-            'skills.items.*.key' => ['required', 'string', 'regex:/^[a-z][a-z0-9_]*$/', 'max:60'],
+            'skills.items.*.key' => ['nullable', 'string', 'max:60'],
             'skills.items.*.default' => ['required', 'boolean'],
+            'skills.items.*.player_editable' => ['boolean'],
             'skills.items.*.subskills' => ['nullable', 'array', 'max:20'],
             'skills.items.*.subskills.*.label' => ['required', 'string', 'max:80'],
-            'skills.items.*.subskills.*.key' => ['required', 'string', 'regex:/^[a-z][a-z0-9_]*$/', 'max:60'],
+            'skills.items.*.subskills.*.key' => ['nullable', 'string', 'max:60'],
             'skills.items.*.subskills.*.default' => ['required', 'boolean'],
+            'skills.items.*.subskills.*.player_editable' => ['boolean'],
 
             'extra_fields' => ['nullable', 'array', 'max:40'],
             'extra_fields.*.label' => ['required', 'string', 'max:80'],
-            'extra_fields.*.key' => ['required', 'string', 'regex:/^[a-z][a-z0-9_]*$/', 'max:60'],
+            'extra_fields.*.key' => ['nullable', 'string', 'max:60'],
             'extra_fields.*.type' => ['required', 'in:text,textarea,number'],
             'extra_fields.*.required' => ['boolean'],
+            'extra_fields.*.player_editable' => ['boolean'],
             'extra_fields.*.default' => ['nullable'],
             'extra_fields.*.min' => ['nullable', 'integer', 'min:-100', 'max:100'],
             'extra_fields.*.max' => ['nullable', 'integer', 'min:-100', 'max:100'],
@@ -166,10 +162,10 @@ class UpdateCharacterTemplateRequest extends FormRequest
                     'default' => (int) $item['default'],
                     'min' => $item['min'] ?? null,
                     'max' => $item['max'] ?? null,
+                    'player_editable' => (bool) ($item['player_editable'] ?? true),
                     'roll' => [
                         'enabled' => (bool) ($item['roll']['enabled'] ?? false),
                         'dice' => $item['roll']['dice'],
-                        'modifier_step' => (int) $item['roll']['modifier_step'],
                     ],
                 ])->values()->all(),
             ],
@@ -179,10 +175,12 @@ class UpdateCharacterTemplateRequest extends FormRequest
                     'key' => $item['key'],
                     'label' => $item['label'],
                     'default' => (bool) $item['default'],
+                    'player_editable' => (bool) ($item['player_editable'] ?? true),
                     'subskills' => collect($item['subskills'] ?? [])->map(fn (array $subskill) => [
                         'key' => $subskill['key'],
                         'label' => $subskill['label'],
                         'default' => (bool) $subskill['default'],
+                        'player_editable' => (bool) ($subskill['player_editable'] ?? true),
                     ])->values()->all(),
                 ])->values()->all(),
             ],
@@ -192,6 +190,7 @@ class UpdateCharacterTemplateRequest extends FormRequest
                 'label' => $item['label'],
                 'type' => $item['type'],
                 'required' => (bool) ($item['required'] ?? false),
+                'player_editable' => (bool) ($item['player_editable'] ?? true),
                 'default' => $item['type'] === 'number'
                     ? (int) ($item['default'] ?? 0)
                     : ($item['default'] ?? ''),
@@ -247,7 +246,12 @@ class UpdateCharacterTemplateRequest extends FormRequest
 
     protected function resolveUniqueKey(?string $existingKey, ?string $label, string $prefix, array &$usedKeys, int $fallbackIndex): string
     {
-        $candidate = $existingKey ?: $this->slugify($label ?? '');
+        $candidate = $this->slugify($existingKey ?? '');
+
+        if ($candidate === '') {
+            $candidate = $this->slugify($label ?? '');
+        }
+
         $candidate = $candidate !== '' ? $candidate : $prefix.'_'.$fallbackIndex;
         $base = $candidate;
         $suffix = 2;
@@ -264,10 +268,10 @@ class UpdateCharacterTemplateRequest extends FormRequest
 
     protected function slugify(string $value): string
     {
-        $value = mb_strtolower($value);
-        $value = strtr($value, $this->transliterationMap);
-        $value = preg_replace('/[^a-z0-9]+/', '_', $value) ?? '';
-
-        return trim($value, '_');
+        return Str::of($value)
+            ->lower()
+            ->slug('_')
+            ->replace('-', '_')
+            ->toString();
     }
 }

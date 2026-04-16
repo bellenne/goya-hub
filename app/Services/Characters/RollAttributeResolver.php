@@ -12,7 +12,6 @@ class RollAttributeResolver
                 'key' => $item['key'],
                 'label' => $item['label'],
                 'default' => (int) ($item['default'] ?? 0),
-                'modifier_step' => max(1, (int) data_get($item, 'roll.modifier_step', 1)),
                 'dice' => data_get($item, 'roll.dice'),
             ])
             ->values()
@@ -27,10 +26,6 @@ class RollAttributeResolver
 
     public function modifier(array $attribute, mixed $value): int
     {
-        $step = max(1, (int) ($attribute['modifier_step'] ?? 1));
-        $default = (int) ($attribute['default'] ?? 0);
-        $current = (int) ($value ?? $default);
-
-        return intdiv($current - $default, $step);
+        return (int) ($value ?? $attribute['default'] ?? 0);
     }
 }
