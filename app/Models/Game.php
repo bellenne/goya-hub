@@ -63,6 +63,11 @@ class Game extends Model
         return $this->hasMany(GameSession::class);
     }
 
+    public function notes(): HasMany
+    {
+        return $this->hasMany(GameNote::class);
+    }
+
     public function resolvedCharacterTemplate(): array
     {
         return $this->character_template ?? CharacterTemplateFactory::default();

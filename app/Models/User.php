@@ -68,4 +68,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(SessionDiceRoll::class);
     }
+
+    public function gameNotes(): HasMany
+    {
+        return $this->hasMany(GameNote::class);
+    }
 }

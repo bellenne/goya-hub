@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import DangerButton from '@/Components/DangerButton.vue';
+import GameNotesModal from '@/Components/GameNotesModal.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import Modal from '@/Components/Modal.vue';
@@ -128,6 +129,7 @@ const showCharacterModal = ref(false);
 const characterModalTab = ref('stats');
 const selectedCharacter = ref(props.scene.own_character);
 const showDiceModal = ref(false);
+const showNotesModal = ref(false);
 const selectedDiceType = ref('d20');
 const rollLogItems = ref([]);
 const showNpcLibraryModal = ref(false);
@@ -1292,8 +1294,13 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
+        <button type="button" class="fixed bottom-24 left-6 z-[65] rounded-lg border border-amber-300/30 bg-stone-950/70 px-6 py-4 text-sm font-semibold uppercase tracking-[0.16em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10" @click="showNotesModal = true">
+            Заметки
+        </button>
+
         <SceneNpcSpawnOverlay :effect="activeNpcSpawnEffect" />
         <SceneDiceRollOverlay :animation="activeDiceRollAnimation" />
+        <GameNotesModal :show="showNotesModal" :game-id="game.id" @close="showNotesModal = false" />
 
         <div v-if="hoveredContext && !can_manage_sessions" class="fixed z-[90] w-48 rounded-lg border border-amber-300/20 bg-stone-950/95 p-2 text-left shadow-2xl backdrop-blur-md" :style="{ left: `${hoveredContext.x}px`, top: `${hoveredContext.y}px` }" @mouseenter="keepContextMenu" @mouseleave="hideContextMenu">
             <template v-if="hoveredContext.kind === 'character'">
