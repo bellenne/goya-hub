@@ -8,11 +8,13 @@ use App\Models\GameSession;
 use App\Models\SessionDiceRoll;
 use App\Models\User;
 use App\Services\Characters\RollAttributeResolver;
+use App\Services\Dice\DiceRandomService;
 
 class RollSessionDice
 {
     public function __construct(
         protected RollAttributeResolver $rollAttributeResolver,
+        protected DiceRandomService $diceRandomService,
     ) {}
 
     public function handle(GameSession $session, User $user, array $data): SessionDiceRoll
@@ -23,11 +25,8 @@ class RollSessionDice
         $sourceContext = $this->resolveSourceContext($session, $data);
         $attributeContext = $this->resolveAttributeContext($sourceContext, $data['attribute_key'] ?? null);
         $modifier = $manualModifier + $attributeContext['modifier'];
-        $rollValues = [];
-
-        for ($index = 0; $index < $diceCount; $index++) {
-            $rollValues[] = random_int(1, $diceType->sides());
-        }
+        $randomResult = $this->diceRandomService->roll($diceType, $diceCount);
+        $rollValues = $randomResult->values;
 
         return $session->diceRolls()->create([
             'user_id' => $user->id,
@@ -42,6 +41,8 @@ class RollSessionDice
             'attribute_label' => $attributeContext['label'],
             'attribute_modifier' => $attributeContext['modifier'],
             'roll_values' => $rollValues,
+            'random_source' => $randomResult->source,
+            'random_error' => $randomResult->error,
             'total' => array_sum($rollValues) + $modifier,
         ]);
     }

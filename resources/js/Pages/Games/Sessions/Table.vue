@@ -5,8 +5,11 @@ import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
+import SceneDiceRollOverlay from '@/Components/SceneDiceRollOverlay.vue';
+import SceneNpcSpawnOverlay from '@/Components/SceneNpcSpawnOverlay.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import { useDiceRollAnimationQueue } from '@/Composables/useDiceRollAnimationQueue';
 import { useGmSessionPresence } from '@/Composables/useGmSessionPresence';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -21,6 +24,11 @@ const props = defineProps({
 });
 
 const page = usePage();
+const {
+    activeDiceRollAnimation,
+    enqueueDiceRollAnimation,
+    clearDiceRollAnimations,
+} = useDiceRollAnimationQueue();
 const normalizeBoolean = (value, fallback = false) => {
     if (value === null || value === undefined || value === '') {
         return fallback;
@@ -51,10 +59,19 @@ let sceneChannel = null;
 let rollsChannel = null;
 let inventoryChannel = null;
 let animationTimeout = null;
-let rollResultTimeout = null;
 let contextMenuTimeout = null;
 let lifecycleNoticeTimeout = null;
 const rollLogTimeouts = new Map();
+const npcSpawnEffectTimeouts = new Set();
+const animatedRollIds = new Set();
+
+const NPC_SPAWN_HOLD_MS = Math.max(
+    1000,
+    Math.min(10000, Number(import.meta.env.VITE_NPC_SPAWN_HOLD_MS ?? 6000) || 6000),
+);
+const NPC_SPAWN_ENTER_MS = 520;
+const NPC_SPAWN_FLY_MS = 1150;
+const NPC_SPAWN_QUEUE_GAP_MS = 160;
 
 const sceneForm = useForm({
     background_id: props.scene.controls.current_background_id ?? '',
@@ -112,7 +129,6 @@ const characterModalTab = ref('stats');
 const selectedCharacter = ref(props.scene.own_character);
 const showDiceModal = ref(false);
 const selectedDiceType = ref('d20');
-const rollResultOverlay = ref(null);
 const rollLogItems = ref([]);
 const showNpcLibraryModal = ref(false);
 const showBackgroundUploadModal = ref(false);
@@ -129,6 +145,8 @@ const isChatInputFocused = ref(false);
 const chatScroll = ref(null);
 const npcAddQuantity = ref(1);
 const npcAddGroup = ref(false);
+const npcSpawnEffectQueue = ref([]);
+const activeNpcSpawnEffect = ref(null);
 const backgroundForm = useForm({
     title: '',
     image: null,
@@ -166,6 +184,10 @@ const alliedNpcs = computed(() => presentSceneNpcs.value.filter((npc) => npc.typ
 const encounteredNpcs = computed(() => encounteredSceneNpcs.value.filter((npc) => !(npc.type === 'ally' && npc.is_present)));
 const enemyNpcs = computed(() => presentSceneNpcs.value.filter((npc) => npc.type === 'enemy'));
 const topEncounteredNpcs = computed(() => encounteredSceneNpcs.value.filter((npc) => npc.type !== 'enemy' && !(npc.type === 'ally' && npc.is_present)));
+const npcSpawnHiddenIds = computed(() => new Set([
+    ...(activeNpcSpawnEffect.value ? [Number(activeNpcSpawnEffect.value.sceneNpcId)] : []),
+    ...npcSpawnEffectQueue.value.map((effect) => Number(effect.sceneNpcId)),
+]));
 const filteredBackgrounds = computed(() => props.scene.controls.backgrounds.filter((background) => (
     background.title.toLowerCase().includes(backgroundSearch.value.toLowerCase())
 )));
@@ -255,6 +277,11 @@ const skillValue = (values, item) => normalizeBoolean(values?.[item.key], normal
 const numberIds = (ids) => [...new Set((ids ?? []).map(Number))];
 const hasNpcState = (ids, npcId) => numberIds(ids).includes(Number(npcId));
 const isCharacterHidden = (characterId) => numberIds(sceneForm.hidden_character_ids).includes(Number(characterId));
+const npcStackVisibilityClass = (npc) => (
+    npcSpawnHiddenIds.value.has(Number(npc.id))
+        ? 'opacity-0 scale-95 pointer-events-none'
+        : ''
+);
 const signedNumber = (value) => `${Number(value) >= 0 ? '+' : ''}${Number(value)}`;
 const baseRollNotation = (roll) => `${roll.dice_count}${roll.dice_type}`;
 const rollFormulaText = (roll) => {
@@ -293,6 +320,8 @@ const rollBreakdownText = (roll) => {
 
     return parts.join(' · ');
 };
+
+let previousPresentSceneNpcIds = new Set(presentSceneNpcs.value.map((npc) => Number(npc.id)));
 
 const applyDefaultRollSource = () => {
     if (props.can_manage_sessions) {
@@ -468,9 +497,16 @@ const syncInventoryForms = (characters) => {
 
 const animateRoll = (roll) => {
     if (!roll) return;
+    if (animatedRollIds.has(Number(roll.id))) return;
+
+    animatedRollIds.add(Number(roll.id));
+    if (animatedRollIds.size > 80) {
+        animatedRollIds.delete(animatedRollIds.values().next().value);
+    }
+
+    enqueueDiceRollAnimation(roll);
     highlightedRollId.value = roll.id;
     rollingText.value = `${roll.actor_name ?? roll.user.name} бросает ${rollFormulaText(roll)}`;
-    rollResultOverlay.value = roll;
     rollLogItems.value = [
         roll,
         ...rollLogItems.value.filter((item) => item.id !== roll.id),
@@ -482,17 +518,167 @@ const animateRoll = (roll) => {
         rollingText.value = '';
     }, 1500);
 
-    if (rollResultTimeout) clearTimeout(rollResultTimeout);
     if (contextMenuTimeout) clearTimeout(contextMenuTimeout);
-    rollResultTimeout = setTimeout(() => {
-        rollResultOverlay.value = null;
-    }, 10000);
 
     if (rollLogTimeouts.has(roll.id)) clearTimeout(rollLogTimeouts.get(roll.id));
     rollLogTimeouts.set(roll.id, setTimeout(() => {
         rollLogItems.value = rollLogItems.value.filter((item) => item.id !== roll.id);
         rollLogTimeouts.delete(roll.id);
     }, 30000));
+};
+
+const npcSpawnGlow = (type) => ({
+    enemy: {
+        glowColor: 'rgba(248, 113, 113, 0.78)',
+        glowSoftColor: 'rgba(127, 29, 29, 0.42)',
+        typeLabel: 'Enemy',
+    },
+    ally: {
+        glowColor: 'rgba(74, 222, 128, 0.76)',
+        glowSoftColor: 'rgba(20, 83, 45, 0.42)',
+        typeLabel: 'Ally',
+    },
+    neutral: {
+        glowColor: 'rgba(96, 165, 250, 0.76)',
+        glowSoftColor: 'rgba(30, 64, 175, 0.42)',
+        typeLabel: 'Neutral',
+    },
+}[type] ?? {
+    glowColor: 'rgba(96, 165, 250, 0.76)',
+    glowSoftColor: 'rgba(30, 64, 175, 0.42)',
+    typeLabel: 'Neutral',
+});
+
+const sceneStageRect = () => (
+    document.querySelector('[data-scene-stage]')?.getBoundingClientRect()
+    ?? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, right: window.innerWidth, bottom: window.innerHeight }
+);
+
+const sceneCenterPoint = () => {
+    const rect = sceneStageRect();
+
+    return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+    };
+};
+
+const npcSpawnTargetPoint = (target) => {
+    const targetElement = document.querySelector(`[data-npc-spawn-target="${target}"]`);
+    const targetRect = targetElement?.getBoundingClientRect();
+
+    if (targetRect && targetRect.width > 0 && targetRect.height > 0) {
+        return {
+            x: targetRect.left + targetRect.width / 2,
+            y: targetRect.top + targetRect.height / 2,
+        };
+    }
+
+    const rect = sceneStageRect();
+
+    return {
+        ally: { x: rect.left + Math.min(120, rect.width * 0.14), y: rect.top + rect.height / 2 },
+        enemy: { x: rect.right - Math.min(120, rect.width * 0.14), y: rect.top + rect.height / 2 },
+        neutral: { x: rect.left + rect.width / 2, y: rect.top + Math.min(92, rect.height * 0.16) },
+    }[target] ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.18 };
+};
+
+const npcSpawnTarget = (type) => ({
+    enemy: 'enemy',
+    ally: 'ally',
+    neutral: 'neutral',
+}[type] ?? 'neutral');
+
+const npcSpawnEffectFromNpc = (npc) => {
+    const type = npc.type ?? 'neutral';
+    const glow = npcSpawnGlow(type);
+    const groupSize = Number(npc.group_size ?? npc.quantity ?? 1);
+
+    return {
+        id: `npc-spawn-${npc.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        sceneNpcId: Number(npc.id),
+        target: npcSpawnTarget(type),
+        title: npc.is_group ? (npc.name || `Group ${npc.base_name ?? 'NPC'}`) : npc.name,
+        badge: npc.is_group && groupSize > 1 ? `x${groupSize}` : '',
+        avatarUrl: npc.avatar_url,
+        center: sceneCenterPoint(),
+        phase: 'entering',
+        ...glow,
+    };
+};
+
+const clearNpcSpawnEffectTimeouts = () => {
+    npcSpawnEffectTimeouts.forEach((timeout) => clearTimeout(timeout));
+    npcSpawnEffectTimeouts.clear();
+};
+
+const queueNpcSpawnTimeout = (callback, delay) => {
+    const timeout = setTimeout(() => {
+        npcSpawnEffectTimeouts.delete(timeout);
+        callback();
+    }, delay);
+
+    npcSpawnEffectTimeouts.add(timeout);
+};
+
+const runNextNpcSpawnEffect = () => {
+    if (activeNpcSpawnEffect.value || npcSpawnEffectQueue.value.length === 0) {
+        return;
+    }
+
+    const [nextEffect, ...remainingEffects] = npcSpawnEffectQueue.value;
+    npcSpawnEffectQueue.value = remainingEffects;
+    activeNpcSpawnEffect.value = {
+        ...nextEffect,
+        center: sceneCenterPoint(),
+        target: npcSpawnTargetPoint(nextEffect.target),
+        phase: 'entering',
+    };
+
+    requestAnimationFrame(() => {
+        if (!activeNpcSpawnEffect.value || activeNpcSpawnEffect.value.id !== nextEffect.id) {
+            return;
+        }
+
+        activeNpcSpawnEffect.value = {
+            ...activeNpcSpawnEffect.value,
+            phase: 'holding',
+        };
+    });
+
+    queueNpcSpawnTimeout(() => {
+        if (!activeNpcSpawnEffect.value || activeNpcSpawnEffect.value.id !== nextEffect.id) {
+            return;
+        }
+
+        activeNpcSpawnEffect.value = {
+            ...activeNpcSpawnEffect.value,
+            target: npcSpawnTargetPoint(nextEffect.target),
+            phase: 'flying',
+        };
+    }, NPC_SPAWN_ENTER_MS + NPC_SPAWN_HOLD_MS);
+
+    queueNpcSpawnTimeout(() => {
+        if (activeNpcSpawnEffect.value?.id === nextEffect.id) {
+            activeNpcSpawnEffect.value = null;
+        }
+
+        queueNpcSpawnTimeout(runNextNpcSpawnEffect, NPC_SPAWN_QUEUE_GAP_MS);
+    }, NPC_SPAWN_ENTER_MS + NPC_SPAWN_HOLD_MS + NPC_SPAWN_FLY_MS);
+};
+
+const enqueueNpcSpawnEffects = (npcs) => {
+    const effects = npcs.map(npcSpawnEffectFromNpc);
+
+    if (effects.length === 0) {
+        return;
+    }
+
+    npcSpawnEffectQueue.value = [
+        ...npcSpawnEffectQueue.value,
+        ...effects,
+    ];
+    runNextNpcSpawnEffect();
 };
 
 const refreshScene = () => router.reload({ only: ['scene', 'session', 'can_manage_sessions'], preserveScroll: true });
@@ -795,6 +981,11 @@ watch(() => latestRoll.value?.id, (newId, oldId) => {
 watch(() => props.inventory.characters, (characters) => syncInventoryForms(characters));
 
 watch(() => props.scene, (scene) => {
+    const currentPresentNpcs = scene.present_npcs ?? scene.visible_npcs ?? [];
+    const currentPresentNpcIds = new Set(currentPresentNpcs.map((npc) => Number(npc.id)));
+    const addedPresentNpcs = currentPresentNpcs.filter((npc) => !previousPresentSceneNpcIds.has(Number(npc.id)));
+    previousPresentSceneNpcIds = currentPresentNpcIds;
+
     sceneForm.background_id = scene.controls.current_background_id ?? '';
     sceneForm.visible_npc_ids = scene.controls.visible_npc_ids ?? [];
     sceneForm.encountered_npc_ids = scene.controls.encountered_npc_ids ?? scene.controls.visible_npc_ids ?? [];
@@ -804,6 +995,8 @@ watch(() => props.scene, (scene) => {
     sceneForm.speaker_type = scene.speaker?.type ?? '';
     sceneForm.speaker_id = scene.speaker?.id ?? '';
     applyDefaultRollSource();
+
+    nextTick(() => enqueueNpcSpawnEffects(addedPresentNpcs));
 });
 
 watch(availableRollActors, () => {
@@ -836,8 +1029,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     if (animationTimeout) clearTimeout(animationTimeout);
-    if (rollResultTimeout) clearTimeout(rollResultTimeout);
     if (lifecycleNoticeTimeout) clearTimeout(lifecycleNoticeTimeout);
+    clearNpcSpawnEffectTimeouts();
+    activeNpcSpawnEffect.value = null;
+    npcSpawnEffectQueue.value = [];
+    clearDiceRollAnimations();
     rollLogTimeouts.forEach((timeout) => clearTimeout(timeout));
     if (!window.Echo) return;
     if (sceneChannel) window.Echo.leave(props.scene.channel);
@@ -883,15 +1079,15 @@ onBeforeUnmount(() => {
             </div>
         </template>
 
-        <div v-if="!can_manage_sessions" class="fixed inset-0 z-50 overflow-hidden bg-stone-950 text-stone-100">
+        <div v-if="!can_manage_sessions" data-scene-stage class="fixed inset-0 z-50 overflow-hidden bg-stone-950 text-stone-100">
             <img v-if="scene.background?.image_url" :src="scene.background.image_url" :alt="scene.background.title" class="absolute inset-0 h-full w-full object-cover" />
             <div v-else class="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(245,158,11,0.20),transparent_18rem),linear-gradient(135deg,rgba(68,64,60,0.96),rgba(15,23,20,0.98))]" />
             <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,rgba(0,0,0,0.12)_38%,rgba(0,0,0,0.68)_100%)]" />
             <div class="absolute inset-0 bg-gradient-to-b from-stone-950/60 via-transparent to-stone-950/82" />
 
             <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-8 pt-5">
-                <div class="pointer-events-auto flex max-w-5xl gap-3 overflow-hidden rounded-lg border border-amber-300/20 bg-stone-950/45 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                    <article v-for="npc in topEncounteredNpcs" :key="`hud-met-${npc.id}`" class="flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
+                <div data-npc-spawn-target="neutral" class="pointer-events-auto flex max-w-5xl gap-3 overflow-hidden rounded-lg border border-amber-300/20 bg-stone-950/45 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
+                    <article v-for="npc in topEncounteredNpcs" :key="`hud-met-${npc.id}`" class="flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
                         <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
                             <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[4.5rem] max-w-[4.5rem] rounded-md object-contain" />
                         </div>
@@ -902,7 +1098,7 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <aside class="pointer-events-none absolute bottom-32 left-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:left-8 xl:w-36">
+            <aside data-npc-spawn-target="ally" class="pointer-events-none absolute bottom-32 left-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:left-8 xl:w-36">
                 <article v-if="scene.own_character" class="pointer-events-auto rounded-lg border border-amber-300/25 bg-stone-950/55 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md" :class="[isSpeaking('character', scene.own_character.id) ? 'ring-2 ring-amber-300/70' : '', isCharacterHidden(scene.own_character.id) ? 'opacity-65' : '']" @mouseenter="showContextMenu($event, 'character', scene.own_character, true)" @mouseleave="hideContextMenu">
                     <div v-if="scene.own_character.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
                         <img :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
@@ -918,7 +1114,7 @@ onBeforeUnmount(() => {
                     <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ teammate.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ teammate.name }}</p>
                 </article>
-                <article v-for="npc in alliedNpcs" :key="`hud-ally-${npc.id}`" class="pointer-events-auto rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
+                <article v-for="npc in alliedNpcs" :key="`hud-ally-${npc.id}`" class="pointer-events-auto rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-emerald-300/20 bg-stone-900/60 p-1">
                         <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
                     </div>
@@ -927,8 +1123,8 @@ onBeforeUnmount(() => {
                 </article>
             </aside>
 
-            <aside class="pointer-events-none absolute bottom-32 right-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:right-8 xl:w-36">
-                <article v-for="npc in enemyNpcs" :key="`hud-enemy-${npc.id}`" class="pointer-events-auto rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'enemy', npc, true)" @mouseleave="hideContextMenu">
+            <aside data-npc-spawn-target="enemy" class="pointer-events-none absolute bottom-32 right-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:right-8 xl:w-36">
+                <article v-for="npc in enemyNpcs" :key="`hud-enemy-${npc.id}`" class="pointer-events-auto rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'enemy', npc, true)" @mouseleave="hideContextMenu">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-red-300/20 bg-stone-900/60 p-1">
                         <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
                     </div>
@@ -936,19 +1132,6 @@ onBeforeUnmount(() => {
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}</p>
                 </article>
             </aside>
-
-            <div class="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                <div v-if="rollResultOverlay" class="pointer-events-auto min-w-80 rounded-lg border border-amber-300/35 bg-stone-950/70 p-6 text-center shadow-[0_24px_90px_rgba(0,0,0,0.62)] ring-1 ring-white/10 backdrop-blur-md">
-                    <p class="fantasy-kicker">{{ rollActorName(rollResultOverlay) }}</p>
-                    <p class="mt-2 text-5xl font-bold text-amber-100">{{ rollResultOverlay.total }}</p>
-                    <p class="mt-2 text-sm font-semibold uppercase tracking-[0.18em] text-stone-300">{{ rollFormulaText(rollResultOverlay) }}</p>
-                    <p v-if="rollAttributeText(rollResultOverlay)" class="mt-2 text-xs uppercase tracking-[0.16em] text-amber-200">{{ rollAttributeText(rollResultOverlay) }}</p>
-                    <p v-if="rollPerformedByLabel(rollResultOverlay)" class="mt-2 text-xs text-stone-400">{{ rollPerformedByLabel(rollResultOverlay) }}</p>
-                    <div class="mt-5 flex flex-wrap justify-center gap-2">
-                        <span v-for="(value, index) in rollResultOverlay.roll_values" :key="`roll-die-${rollResultOverlay.id}-${index}`" class="grid h-12 w-12 place-items-center rounded-lg border border-amber-300/30 bg-amber-300/10 text-lg font-semibold text-amber-50">{{ value }}</span>
-                    </div>
-                </div>
-            </div>
 
             <div class="absolute bottom-6 left-6 z-30 flex gap-3">
                 <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-6 py-4 text-sm font-semibold uppercase tracking-[0.16em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10" @click="openCharacterModal('inventory')">
@@ -983,15 +1166,15 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
-        <div v-if="can_manage_sessions" class="fixed inset-0 z-50 overflow-hidden bg-stone-950 text-stone-100">
+        <div v-if="can_manage_sessions" data-scene-stage class="fixed inset-0 z-50 overflow-hidden bg-stone-950 text-stone-100">
             <img v-if="scene.background?.image_url" :src="scene.background.image_url" :alt="scene.background.title" class="absolute inset-0 h-full w-full object-cover" />
             <div v-else class="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(245,158,11,0.20),transparent_18rem),linear-gradient(135deg,rgba(68,64,60,0.96),rgba(15,23,20,0.98))]" />
             <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,rgba(0,0,0,0.14)_38%,rgba(0,0,0,0.72)_100%)]" />
             <div class="absolute inset-0 bg-gradient-to-b from-stone-950/62 via-transparent to-stone-950/84" />
 
             <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-8 pt-5">
-                <div class="pointer-events-auto flex max-w-5xl gap-3 overflow-visible rounded-lg border border-amber-300/20 bg-stone-950/45 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                    <article v-for="npc in topEncounteredNpcs" :key="`gm-met-${npc.id}`" class="group relative flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
+                <div data-npc-spawn-target="neutral" class="pointer-events-auto flex max-w-5xl gap-3 overflow-visible rounded-lg border border-amber-300/20 bg-stone-950/45 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
+                    <article v-for="npc in topEncounteredNpcs" :key="`gm-met-${npc.id}`" class="group relative flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
                         <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
                             <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[4.5rem] max-w-[4.5rem] rounded-md object-contain" />
                         </div>
@@ -1019,7 +1202,7 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <aside class="pointer-events-none absolute bottom-32 left-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:left-8 xl:w-36">
+            <aside data-npc-spawn-target="ally" class="pointer-events-none absolute bottom-32 left-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:left-8 xl:w-36">
                 <article v-for="character in inventory.characters" :key="`gm-party-${character.id}`" class="pointer-events-auto group relative rounded-lg border border-amber-300/25 bg-stone-950/55 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md" :class="[isSpeaking('character', character.id) ? 'ring-2 ring-amber-300/70' : '', isCharacterHidden(character.id) ? 'opacity-65' : '']" @mouseenter="showContextMenu($event, 'character', character)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('character', character.id)">
                     <div v-if="character.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
                         <img :src="character.avatar_url" :alt="character.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
@@ -1027,7 +1210,7 @@ onBeforeUnmount(() => {
                     <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ character.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ character.name }}</p>
                     <p v-if="isCharacterHidden(character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">hidden for players</p></article>
-                <article v-for="npc in alliedNpcs" :key="`gm-ally-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
+                <article v-for="npc in alliedNpcs" :key="`gm-ally-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-emerald-300/20 bg-stone-900/60 p-1">
                         <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
                     </div>
@@ -1035,8 +1218,8 @@ onBeforeUnmount(() => {
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}<span v-if="npc.quantity > 1"> x{{ npc.quantity }}</span></p></article>
             </aside>
 
-            <aside class="pointer-events-none absolute bottom-32 right-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:right-8 xl:w-36">
-                <article v-for="npc in enemyNpcs" :key="`gm-enemy-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md" :class="isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'enemy', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
+            <aside data-npc-spawn-target="enemy" class="pointer-events-none absolute bottom-32 right-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:right-8 xl:w-36">
+                <article v-for="npc in enemyNpcs" :key="`gm-enemy-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'enemy', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-red-300/20 bg-stone-900/60 p-1">
                         <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
                     </div>
@@ -1079,19 +1262,6 @@ onBeforeUnmount(() => {
                 </template>
             </div>
 
-            <div class="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-                <div v-if="rollResultOverlay" class="pointer-events-auto min-w-80 rounded-lg border border-amber-300/35 bg-stone-950/70 p-6 text-center shadow-[0_24px_90px_rgba(0,0,0,0.62)] ring-1 ring-white/10 backdrop-blur-md">
-                    <p class="fantasy-kicker">{{ rollActorName(rollResultOverlay) }}</p>
-                    <p class="mt-2 text-5xl font-bold text-amber-100">{{ rollResultOverlay.total }}</p>
-                    <p class="mt-2 text-sm font-semibold uppercase tracking-[0.18em] text-stone-300">{{ rollFormulaText(rollResultOverlay) }}</p>
-                    <p v-if="rollAttributeText(rollResultOverlay)" class="mt-2 text-xs uppercase tracking-[0.16em] text-amber-200">{{ rollAttributeText(rollResultOverlay) }}</p>
-                    <p v-if="rollPerformedByLabel(rollResultOverlay)" class="mt-2 text-xs text-stone-400">{{ rollPerformedByLabel(rollResultOverlay) }}</p>
-                    <div class="mt-5 flex flex-wrap justify-center gap-2">
-                        <span v-for="(value, index) in rollResultOverlay.roll_values" :key="`gm-roll-die-${rollResultOverlay.id}-${index}`" class="grid h-12 w-12 place-items-center rounded-lg border border-amber-300/30 bg-amber-300/10 text-lg font-semibold text-amber-50">{{ value }}</span>
-                    </div>
-                </div>
-            </div>
-
             <div class="absolute bottom-6 left-6 z-30 flex gap-3">
                 <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-8 py-4 text-sm font-semibold uppercase tracking-[0.16em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10" @click="showNpcLibraryModal = true">
                     NPC
@@ -1121,6 +1291,9 @@ onBeforeUnmount(() => {
                 </div>
             </div>
         </div>
+
+        <SceneNpcSpawnOverlay :effect="activeNpcSpawnEffect" />
+        <SceneDiceRollOverlay :animation="activeDiceRollAnimation" />
 
         <div v-if="hoveredContext && !can_manage_sessions" class="fixed z-[90] w-48 rounded-lg border border-amber-300/20 bg-stone-950/95 p-2 text-left shadow-2xl backdrop-blur-md" :style="{ left: `${hoveredContext.x}px`, top: `${hoveredContext.y}px` }" @mouseenter="keepContextMenu" @mouseleave="hideContextMenu">
             <template v-if="hoveredContext.kind === 'character'">

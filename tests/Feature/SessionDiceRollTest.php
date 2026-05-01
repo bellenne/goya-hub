@@ -10,6 +10,7 @@ use App\Models\Game;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -80,6 +81,69 @@ class SessionDiceRollTest extends TestCase
             );
     }
 
+    public function test_roll_uses_random_org_values_when_configured(): void
+    {
+        Event::fake([SessionDiceRolled::class]);
+        Http::fake([
+            'api.random.org/*' => Http::response([
+                'jsonrpc' => '2.0',
+                'result' => [
+                    'random' => [
+                        'data' => [4, 6],
+                    ],
+                ],
+                'id' => 'dice-test',
+            ]),
+        ]);
+        config()->set('services.random_org.api_key', 'test-key');
+
+        [$game, , $player, $session] = $this->createActiveSession();
+
+        $this->actingAs($player)->post(route('games.sessions.dice-rolls.store', [$game, $session]), [
+            'dice_count' => 2,
+            'dice_type' => 'd6',
+            'modifier' => 1,
+        ])->assertRedirect(route('games.sessions.show', [$game, $session], absolute: false));
+
+        $roll = $session->fresh()->diceRolls()->latest()->firstOrFail();
+
+        $this->assertSame([4, 6], $roll->roll_values);
+        $this->assertSame(11, $roll->total);
+        $this->assertSame('random_org', $roll->random_source);
+
+        Http::assertSent(fn ($request) => $request['method'] === 'generateIntegers'
+            && $request['params']['apiKey'] === 'test-key'
+            && $request['params']['n'] === 2
+            && $request['params']['min'] === 1
+            && $request['params']['max'] === 6);
+    }
+
+    public function test_roll_falls_back_to_server_random_int_when_random_org_fails(): void
+    {
+        Event::fake([SessionDiceRolled::class]);
+        Http::fake([
+            'api.random.org/*' => Http::response(['error' => ['message' => 'quota exceeded']], 200),
+        ]);
+        config()->set('services.random_org.api_key', 'test-key');
+        config()->set('services.random_org.fallback', 'local');
+
+        [$game, , $player, $session] = $this->createActiveSession();
+
+        $this->actingAs($player)->post(route('games.sessions.dice-rolls.store', [$game, $session]), [
+            'dice_count' => 1,
+            'dice_type' => 'd20',
+            'modifier' => 0,
+        ])->assertRedirect(route('games.sessions.show', [$game, $session], absolute: false));
+
+        $roll = $session->fresh()->diceRolls()->latest()->firstOrFail();
+
+        $this->assertCount(1, $roll->roll_values);
+        $this->assertGreaterThanOrEqual(1, $roll->roll_values[0]);
+        $this->assertLessThanOrEqual(20, $roll->roll_values[0]);
+        $this->assertSame('server_random_int_fallback', $roll->random_source);
+        $this->assertSame('quota exceeded', $roll->random_error);
+    }
+
     public function test_roll_requires_active_session(): void
     {
         [$game, $gm, $player, $session] = $this->createActiveSession(status: SessionStatus::Lobby);
@@ -140,4 +204,3 @@ class SessionDiceRollTest extends TestCase
         return [$game, $gm, $player, $session];
     }
 }
-

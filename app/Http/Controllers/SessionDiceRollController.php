@@ -9,6 +9,8 @@ use App\Models\Game;
 use App\Models\GameSession;
 use App\Services\Sessions\RollSessionDice;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -25,7 +27,13 @@ class SessionDiceRollController extends Controller
 
         abort_if($session->status !== SessionStatus::Active, Response::HTTP_CONFLICT);
 
-        $roll = $rollSessionDice->handle($session, $request->user(), $request->validated());
+        try {
+            $roll = $rollSessionDice->handle($session, $request->user(), $request->validated());
+        } catch (RuntimeException $exception) {
+            throw ValidationException::withMessages([
+                'dice_type' => $exception->getMessage(),
+            ]);
+        }
 
         broadcast(new SessionDiceRolled($roll->load('user')))->toOthers();
 

@@ -348,6 +348,7 @@ class GameSessionController extends Controller
                     'actor_type' => $roll->source_type?->value,
                     'actor_id' => $roll->source_id,
                     'roll_values' => $roll->roll_values,
+                    'random_source' => $roll->random_source,
                     'total' => $roll->total,
                     'rolled_at' => $roll->created_at?->toISOString(),
                     'user' => [

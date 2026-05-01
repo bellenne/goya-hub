@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'random_org' => [
+        'api_key' => env('RANDOM_ORG_API_KEY'),
+        'endpoint' => env('RANDOM_ORG_ENDPOINT', 'https://api.random.org/json-rpc/4/invoke'),
+        'timeout' => env('RANDOM_ORG_TIMEOUT', 3),
+        // MVP policy: if RANDOM.ORG is unavailable, keep rolls server-authoritative
+        // by falling back to PHP random_int(). Set to "fail" to reject rolls instead.
+        'fallback' => env('RANDOM_ORG_FALLBACK', 'local'),
+    ],
+
 ];

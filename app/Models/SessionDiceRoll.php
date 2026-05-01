@@ -23,6 +23,8 @@ class SessionDiceRoll extends Model
         'attribute_label',
         'attribute_modifier',
         'roll_values',
+        'random_source',
+        'random_error',
         'total',
     ];
 
