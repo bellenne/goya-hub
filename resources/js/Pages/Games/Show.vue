@@ -59,6 +59,15 @@ const quickLinks = computed(() => {
         });
     }
 
+    if (props.game.can_view_tickets) {
+        links.push({
+            label: 'Тикеты',
+            description: 'Личные обращения игроков к GM/co-GM и переписка по вопросам игры.',
+            href: route('games.tickets.index', props.game.id),
+            accent: 'violet',
+        });
+    }
+
     if (props.game.can_manage_content) {
         links.push({
             label: 'NPC',

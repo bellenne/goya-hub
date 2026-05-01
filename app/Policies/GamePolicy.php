@@ -79,6 +79,18 @@ class GamePolicy
         return $membership !== null && $membership->role->canManageInvites();
     }
 
+    public function viewTickets(User $user, Game $game): bool
+    {
+        return $game->members()->where('user_id', $user->id)->exists();
+    }
+
+    public function manageTickets(User $user, Game $game): bool
+    {
+        $membership = $this->membershipFor($user, $game);
+
+        return $membership !== null && $membership->role->canManageInvites();
+    }
+
     public function manageMemberRoles(User $user, Game $game): bool
     {
         return $game->owner_id === $user->id;

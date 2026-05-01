@@ -68,6 +68,11 @@ class Game extends Model
         return $this->hasMany(GameNote::class);
     }
 
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class);
+    }
+
     public function resolvedCharacterTemplate(): array
     {
         return $this->character_template ?? CharacterTemplateFactory::default();

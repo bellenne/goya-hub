@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Game;
+use App\Services\Characters\AttributePointBalance;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -164,13 +165,14 @@ class UpsertCharacterRequest extends FormRequest
 
     protected function validatePoints(Validator $validator, array $template): void
     {
-        $attributeSpent = $this->spentPoints(
+        $attributeBalance = AttributePointBalance::calculate(
             $this->input('attribute_values', []),
-            $template['attributes']['items'],
+            $template['attributes']['items'] ?? [],
+            (int) ($template['attributes']['points'] ?? 0),
         );
 
-        if ($attributeSpent > $template['attributes']['points']) {
-            $validator->errors()->add('attribute_values', 'Attribute free points limit exceeded.');
+        if ($attributeBalance['available'] < 0) {
+            $validator->errors()->add('attribute_values', 'Attribute free points balance is negative.');
         }
 
         foreach (($template['points'] ?? []) as $poolKey => $poolLimit) {

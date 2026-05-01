@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\SessionStatus;
+use App\Enums\SessionMusicPlaybackStatus;
 use App\Events\SessionLobbyUpdated;
 use App\Events\SessionSceneUpdated;
 use App\Http\Requests\JoinGameSessionByCodeRequest;
@@ -72,7 +73,7 @@ class GameSessionController extends Controller
         abort_unless($session->game_id === $game->id, 404);
         Gate::authorize('view', $session);
 
-        $session->load(['participants.user', 'game.characters.user', 'game.backgrounds', 'game.npcs']);
+        $session->load(['participants.user', 'game.characters.user', 'game.backgrounds', 'game.npcs', 'musicState']);
         $sceneState = $ensureSessionSceneState->handle($session);
         $sceneState->load(['background', 'sceneNpcs.npc', 'speaker']);
 
@@ -213,6 +214,7 @@ class GameSessionController extends Controller
             'game.backgrounds',
             'game.npcs',
             'game.characters.user',
+            'musicState',
         ]);
 
         $sceneState = $session->sceneState;
@@ -250,6 +252,7 @@ class GameSessionController extends Controller
                 'title' => $sceneState->background->title,
                 'image_url' => $sceneState->background->image_path ? Storage::disk('public')->url($sceneState->background->image_path) : null,
             ] : null,
+            'music' => $this->musicPayload($session),
             'scene_npcs' => $sceneNpcs,
             'visible_npcs' => $sceneNpcs
                 ->where('is_present', true)
@@ -356,6 +359,35 @@ class GameSessionController extends Controller
                         'name' => $roll->user->name,
                     ],
                 ]),
+        ];
+    }
+
+    protected function musicPayload(GameSession $session): array
+    {
+        $musicState = $session->musicState;
+
+        if ($musicState === null) {
+            return [
+                'source_type' => null,
+                'title' => null,
+                'audio_url' => null,
+                'youtube_url' => null,
+                'playback_status' => SessionMusicPlaybackStatus::Stopped->value,
+                'position_seconds' => 0,
+                'started_at' => null,
+                'updated_at' => null,
+            ];
+        }
+
+        return [
+            'source_type' => $musicState->source_type?->value,
+            'title' => $musicState->title,
+            'audio_url' => $musicState->file_path ? Storage::disk('public')->url($musicState->file_path) : $musicState->direct_url,
+            'youtube_url' => $musicState->youtube_url,
+            'playback_status' => $musicState->playback_status->value,
+            'position_seconds' => $musicState->position_seconds,
+            'started_at' => $musicState->started_at?->toISOString(),
+            'updated_at' => $musicState->updated_at?->toISOString(),
         ];
     }
 

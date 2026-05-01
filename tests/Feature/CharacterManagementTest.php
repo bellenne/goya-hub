@@ -92,6 +92,7 @@ class CharacterManagementTest extends TestCase
     public function test_free_points_limit_cannot_be_exceeded(): void
     {
         [$game, $player] = $this->createGameWithPlayer();
+        $this->applyAttributeTemplate($game);
 
         $response = $this->actingAs($player)->post(route('games.character.upsert', $game), [
             'name' => 'Broken Build',
@@ -114,6 +115,82 @@ class CharacterManagementTest extends TestCase
 
         $response->assertSessionHasErrors('attribute_values');
         $this->assertDatabaseCount('characters', 0);
+    }
+
+    public function test_lowering_attribute_below_default_returns_points_for_character_creation(): void
+    {
+        [$game, $player] = $this->createGameWithPlayer();
+        $this->applyAttributeTemplate($game, points: 2, default: -2, min: -5, max: 5);
+
+        $response = $this->actingAs($player)->post(route('games.character.upsert', $game), [
+            'name' => 'Balanced Weakness',
+            'attribute_values' => [
+                'strength' => -5,
+                'agility' => 3,
+                'mind' => -2,
+            ],
+            'skill_values' => ['unused' => 0],
+            'extra_field_values' => [],
+        ]);
+
+        $response->assertRedirect(route('games.character.edit', $game, absolute: false));
+
+        $character = Character::query()->where('game_id', $game->id)->where('user_id', $player->id)->firstOrFail();
+
+        $this->assertSame(-5, $character->attribute_values['strength']);
+        $this->assertSame(3, $character->attribute_values['agility']);
+    }
+
+    public function test_attribute_values_must_stay_within_template_min_and_max(): void
+    {
+        [$game, $player] = $this->createGameWithPlayer();
+        $this->applyAttributeTemplate($game, points: 2, default: -2, min: -5, max: 5);
+
+        $response = $this->actingAs($player)->post(route('games.character.upsert', $game), [
+            'name' => 'Too Low',
+            'attribute_values' => [
+                'strength' => -6,
+                'agility' => -2,
+                'mind' => -2,
+            ],
+            'skill_values' => ['unused' => 0],
+            'extra_field_values' => [],
+        ]);
+
+        $response->assertSessionHasErrors('attribute_values.strength');
+        $this->assertDatabaseCount('characters', 0);
+    }
+
+    public function test_character_sheet_update_validates_returned_and_spent_attribute_points(): void
+    {
+        [$game, $player, $owner] = $this->createGameWithPlayer(includeOwner: true);
+        $this->applyAttributeTemplate($game, points: 2, default: -2, min: -5, max: 5);
+
+        $character = Character::query()->create([
+            'game_id' => $game->id,
+            'user_id' => $player->id,
+            'name' => 'Session Sheet',
+            'origin' => null,
+            'notes' => null,
+            'attribute_values' => ['strength' => -2, 'agility' => -2, 'mind' => -2],
+            'skill_values' => ['unused' => 0],
+            'extra_field_values' => [],
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($owner)->patch(route('games.characters.sheet.update', [$game, $character]), [
+            'attribute_values' => ['strength' => -5, 'agility' => 3, 'mind' => -2],
+            'skill_values' => ['unused' => 0],
+            'extra_field_values' => [],
+        ])->assertRedirect(route('games.characters.show', [$game, $character], absolute: false));
+
+        $this->assertSame(3, $character->refresh()->attribute_values['agility']);
+
+        $this->actingAs($owner)->patch(route('games.characters.sheet.update', [$game, $character]), [
+            'attribute_values' => ['strength' => -2, 'agility' => 5, 'mind' => 5],
+            'skill_values' => ['unused' => 0],
+            'extra_field_values' => [],
+        ])->assertSessionHasErrors('attribute_values');
     }
 
     public function test_reopening_form_shows_saved_character_data(): void
@@ -275,5 +352,26 @@ class CharacterManagementTest extends TestCase
 
         return $includeOwner ? [$game, $player, $owner] : [$game, $player];
     }
-}
 
+    protected function applyAttributeTemplate(Game $game, int $points = 2, int $default = 2, int $min = 0, int $max = 5): void
+    {
+        $game->update([
+            'character_template' => [
+                'attributes' => [
+                    'points' => $points,
+                    'items' => [
+                        ['key' => 'strength', 'label' => 'Strength', 'default' => $default, 'min' => $min, 'max' => $max, 'player_editable' => true],
+                        ['key' => 'agility', 'label' => 'Agility', 'default' => $default, 'min' => $min, 'max' => $max, 'player_editable' => true],
+                        ['key' => 'mind', 'label' => 'Mind', 'default' => $default, 'min' => $min, 'max' => $max, 'player_editable' => true],
+                    ],
+                ],
+                'skills' => [
+                    'points' => 0,
+                    'items' => [],
+                ],
+                'points' => [],
+                'extra_fields' => [],
+            ],
+        ]);
+    }
+}

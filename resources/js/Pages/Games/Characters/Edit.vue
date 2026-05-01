@@ -5,6 +5,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import { attributePointDelta, calculateAttributePointBalance } from '@/Composables/useAttributePointBalance';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 
@@ -73,7 +74,12 @@ const spentPoints = (values, items) => items.reduce((sum, item) => {
     return sum + Math.max(0, value - baseline);
 }, 0);
 
-const attributesSpent = computed(() => spentPoints(form.attribute_values, props.template.attributes.items));
+const attributePointBalance = computed(() => calculateAttributePointBalance(
+    form.attribute_values,
+    props.template.attributes.items,
+    props.template.attributes.points,
+));
+const attributeDelta = (item) => attributePointDelta(form.attribute_values, item);
 const extraPoolsSpent = computed(() => {
     const result = {};
 
@@ -96,6 +102,10 @@ const avatarPreviewUrl = computed(() => {
 });
 
 const submit = () => {
+    if (attributePointBalance.value.available < 0) {
+        return;
+    }
+
     form.post(route('games.character.upsert', props.game.id), {
         forceFormData: true,
         preserveScroll: true,
@@ -137,7 +147,7 @@ const modifierPreview = (item, value) => {
                     <Link :href="back_to_session ? route('games.sessions.show', [game.id, back_to_session.id]) : route('games.show', game.id)">
                         <SecondaryButton>{{ back_to_session ? 'Вернуться к сессии' : 'Вернуться к игре' }}</SecondaryButton>
                     </Link>
-                    <PrimaryButton :disabled="form.processing" @click="submit">
+                    <PrimaryButton :disabled="form.processing || attributePointBalance.available < 0" @click="submit">
                         {{ form.processing ? 'Сохраняем...' : 'Сохранить персонажа' }}
                     </PrimaryButton>
                 </div>
@@ -153,7 +163,7 @@ const modifierPreview = (item, value) => {
                             <p class="text-sm text-stone-400">Характеристики</p>
                             <p class="mt-2 text-3xl font-semibold text-white">{{ template.attributes.items.length }}</p>
                             <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">
-                                Потрачено {{ attributesSpent }} из {{ template.attributes.points }}
+                                Осталось {{ attributePointBalance.available }} оч.
                             </p>
                         </article>
                         <article class="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur">
@@ -257,12 +267,37 @@ const modifierPreview = (item, value) => {
                                     <h2 class="mt-2 text-2xl font-semibold text-amber-50">Основные параметры</h2>
                                 </div>
                                 <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-stone-300">
-                                    {{ attributesSpent }} / {{ template.attributes.points }} свободных очков использовано
+                                    Осталось {{ attributePointBalance.available }} очков
+                                </div>
+                            </div>
+
+                            <div class="mt-5 grid gap-3 md:grid-cols-4">
+                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                    <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Базовые очки</div>
+                                    <div class="mt-2 text-xl font-semibold text-amber-50">{{ attributePointBalance.base }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3">
+                                    <div class="text-xs uppercase tracking-[0.18em] text-emerald-200/70">Возвращено</div>
+                                    <div class="mt-2 text-xl font-semibold text-emerald-100">+{{ attributePointBalance.gained }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3">
+                                    <div class="text-xs uppercase tracking-[0.18em] text-rose-200/70">Потрачено</div>
+                                    <div class="mt-2 text-xl font-semibold text-rose-100">-{{ attributePointBalance.spent }}</div>
+                                </div>
+                                <div
+                                    class="rounded-2xl border px-4 py-3"
+                                    :class="attributePointBalance.available < 0 ? 'border-rose-400/35 bg-rose-500/15' : 'border-amber-300/20 bg-amber-300/10'"
+                                >
+                                    <div class="text-xs uppercase tracking-[0.18em]" :class="attributePointBalance.available < 0 ? 'text-rose-200/80' : 'text-amber-200/70'">Осталось</div>
+                                    <div class="mt-2 text-xl font-semibold" :class="attributePointBalance.available < 0 ? 'text-rose-100' : 'text-amber-50'">{{ attributePointBalance.available }}</div>
                                 </div>
                             </div>
 
                             <div v-if="fieldError('attribute_values')" class="mt-5 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
                                 {{ fieldError('attribute_values') }}
+                            </div>
+                            <div v-else-if="attributePointBalance.available < 0" class="mt-5 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                                Баланс характеристик отрицательный. Понизьте часть значений или верните очки, чтобы сохранить персонажа.
                             </div>
 
                             <div v-if="template.attributes.items.length === 0" class="mt-6 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
@@ -303,6 +338,14 @@ const modifierPreview = (item, value) => {
                                             <span v-else>Настройте значение для этого персонажа. Модификатор рассчитывается автоматически по параметрам шаблона.</span>
                                         </p>
                                     </div>
+                                    <p
+                                        class="mt-3 text-xs font-semibold uppercase tracking-[0.18em]"
+                                        :class="attributeDelta(item) < 0 ? 'text-emerald-300' : attributeDelta(item) > 0 ? 'text-rose-300' : 'text-stone-500'"
+                                    >
+                                        <template v-if="attributeDelta(item) < 0">Возвращает +{{ Math.abs(attributeDelta(item)) }} оч.</template>
+                                        <template v-else-if="attributeDelta(item) > 0">Тратит -{{ attributeDelta(item) }} оч.</template>
+                                        <template v-else>На базовом значении</template>
+                                    </p>
 
                                     <InputError class="mt-3" :message="fieldError(`attribute_values.${item.key}`)" />
                                 </article>
@@ -495,7 +538,7 @@ const modifierPreview = (item, value) => {
                                     <div class="mt-2 text-base font-semibold text-stone-100">{{ enabledSkillCount }} активных</div>
                                 </div>
                             </div>
-                            <PrimaryButton class="mt-6 w-full" :disabled="form.processing" @click="submit">
+                            <PrimaryButton class="mt-6 w-full" :disabled="form.processing || attributePointBalance.available < 0" @click="submit">
                                 {{ form.processing ? 'Сохраняем...' : 'Сохранить персонажа' }}
                             </PrimaryButton>
                         </section>

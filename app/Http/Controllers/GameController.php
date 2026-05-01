@@ -87,6 +87,7 @@ class GameController extends Controller
                 'can_manage_sessions' => Gate::allows('manageSessions', $game),
                 'can_edit_character' => Gate::allows('createCharacter', $game),
                 'can_view_characters' => Gate::allows('viewCharacters', $game),
+                'can_view_tickets' => Gate::allows('viewTickets', $game),
                 'current_user_character_id' => $game->characters()
                     ->where('user_id', auth()->id())
                     ->value('id'),

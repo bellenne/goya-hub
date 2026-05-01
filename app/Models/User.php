@@ -73,4 +73,14 @@ class User extends Authenticatable
     {
         return $this->hasMany(GameNote::class);
     }
+
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class, 'creator_user_id');
+    }
+
+    public function ticketMessages(): HasMany
+    {
+        return $this->hasMany(TicketMessage::class, 'author_user_id');
+    }
 }

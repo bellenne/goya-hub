@@ -10,6 +10,7 @@ import SceneDiceRollOverlay from '@/Components/SceneDiceRollOverlay.vue';
 import SceneNpcSpawnOverlay from '@/Components/SceneNpcSpawnOverlay.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import { attributePointDelta, calculateAttributePointBalance } from '@/Composables/useAttributePointBalance';
 import { useDiceRollAnimationQueue } from '@/Composables/useDiceRollAnimationQueue';
 import { useGmSessionPresence } from '@/Composables/useGmSessionPresence';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
@@ -65,6 +66,9 @@ let lifecycleNoticeTimeout = null;
 const rollLogTimeouts = new Map();
 const npcSpawnEffectTimeouts = new Set();
 const animatedRollIds = new Set();
+const MUSIC_VOLUME_KEY = `goy-table.session.${props.session.id}.music.volume`;
+const MUSIC_MUTED_KEY = `goy-table.session.${props.session.id}.music.muted`;
+const MUSIC_COLLAPSED_KEY = `goy-table.session.${props.session.id}.music.collapsed`;
 
 const NPC_SPAWN_HOLD_MS = Math.max(
     1000,
@@ -73,6 +77,21 @@ const NPC_SPAWN_HOLD_MS = Math.max(
 const NPC_SPAWN_ENTER_MS = 520;
 const NPC_SPAWN_FLY_MS = 1150;
 const NPC_SPAWN_QUEUE_GAP_MS = 160;
+
+const storedMusicVolume = typeof window === 'undefined'
+    ? 0.55
+    : Number(window.localStorage?.getItem(MUSIC_VOLUME_KEY) ?? 0.55);
+const storedMusicCollapsed = typeof window === 'undefined'
+    ? null
+    : window.localStorage?.getItem(MUSIC_COLLAPSED_KEY);
+const defaultMusicExpanded = typeof window === 'undefined' ? true : window.innerWidth >= 768;
+const localMusic = ref(props.scene.music ?? null);
+const musicVolume = ref(Number.isFinite(storedMusicVolume) ? Math.max(0, Math.min(1, storedMusicVolume)) : 0.55);
+const musicMuted = ref(typeof window !== 'undefined' && window.localStorage?.getItem(MUSIC_MUTED_KEY) === '1');
+const isMusicExpanded = ref(storedMusicCollapsed === null ? defaultMusicExpanded : storedMusicCollapsed !== '1');
+const musicAudio = ref(null);
+const youtubeFrame = ref(null);
+const musicError = ref('');
 
 const sceneForm = useForm({
     background_id: props.scene.controls.current_background_id ?? '',
@@ -130,6 +149,11 @@ const characterModalTab = ref('stats');
 const selectedCharacter = ref(props.scene.own_character);
 const showDiceModal = ref(false);
 const showNotesModal = ref(false);
+const showMusicModal = ref(false);
+const musicSourceTab = ref('uploaded');
+const musicSourceErrors = ref({});
+const isMusicSourceSubmitting = ref(false);
+const musicTrackInput = ref(null);
 const selectedDiceType = ref('d20');
 const rollLogItems = ref([]);
 const showNpcLibraryModal = ref(false);
@@ -154,6 +178,13 @@ const backgroundForm = useForm({
     image: null,
     back_to_session_id: props.session.id,
     apply_to_session: true,
+});
+const musicSourceForm = useForm({
+    source_type: 'uploaded',
+    title: '',
+    track: null,
+    direct_url: '',
+    youtube_url: '',
 });
 const gmSheetForm = useForm({
     attribute_values: {},
@@ -193,6 +224,31 @@ const npcSpawnHiddenIds = computed(() => new Set([
 const filteredBackgrounds = computed(() => props.scene.controls.backgrounds.filter((background) => (
     background.title.toLowerCase().includes(backgroundSearch.value.toLowerCase())
 )));
+const hasMusicSource = computed(() => Boolean(localMusic.value?.source_type));
+const musicTitle = computed(() => localMusic.value?.title || 'Музыка сцены не выбрана');
+const musicStatusLabel = computed(() => ({
+    playing: 'Играет',
+    paused: 'Пауза',
+    stopped: 'Остановлено',
+}[localMusic.value?.playback_status] ?? 'Остановлено'));
+const musicStatusClass = computed(() => ({
+    playing: 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100',
+    paused: 'border-amber-300/25 bg-amber-400/10 text-amber-100',
+    stopped: 'border-stone-500/35 bg-stone-700/30 text-stone-200',
+}[localMusic.value?.playback_status] ?? 'border-stone-500/35 bg-stone-700/30 text-stone-200'));
+const musicSourceLabel = computed(() => ({
+    uploaded: 'Uploaded track',
+    direct_url: 'Direct URL',
+    youtube: 'YouTube',
+}[localMusic.value?.source_type] ?? 'No source'));
+const youtubeEmbedUrl = computed(() => {
+    const id = youtubeVideoId(localMusic.value?.youtube_url);
+    if (!id) return null;
+
+    const origin = typeof window === 'undefined' ? '' : `&origin=${encodeURIComponent(window.location.origin)}`;
+
+    return `https://www.youtube.com/embed/${id}?enablejsapi=1&playsinline=1&controls=1${origin}`;
+});
 const filteredNpcs = computed(() => props.scene.controls.npcs.filter((npc) => (
     npc.name.toLowerCase().includes(npcSearch.value.toLowerCase())
 )));
@@ -217,6 +273,12 @@ const isSpeaking = (type, id, sceneNpcId = null) => {
 const templateItems = (section) => ownCharacterTemplate.value?.[section]?.items ?? [];
 const skillTemplateItems = computed(() => templateItems('skills').flatMap((skill) => [skill, ...(skill.subskills ?? [])]));
 const extraTemplateItems = computed(() => ownCharacterTemplate.value?.extra_fields ?? []);
+const gmAttributePointBalance = computed(() => calculateAttributePointBalance(
+    gmSheetForm.attribute_values,
+    templateItems('attributes'),
+    ownCharacterTemplate.value?.attributes?.points ?? 0,
+));
+const gmAttributeDelta = (item) => attributePointDelta(gmSheetForm.attribute_values, item);
 const playerRollActor = computed(() => {
     if (!props.scene.own_character) return null;
 
@@ -792,6 +854,10 @@ const setBackgroundImage = (event) => {
     backgroundForm.image = event.target.files[0] ?? null;
 };
 
+const setMusicTrackFile = (event) => {
+    musicSourceForm.track = event.target.files[0] ?? null;
+};
+
 const submitBackground = () => {
     backgroundForm.post(route('games.backgrounds.store', props.game.id), {
         forceFormData: true,
@@ -803,6 +869,157 @@ const submitBackground = () => {
             backgroundForm.reset('title', 'image');
         },
     });
+};
+
+const currentMusicPosition = () => {
+    const music = localMusic.value;
+    if (!music) return 0;
+
+    const base = Number(music.position_seconds ?? 0);
+    if (music.playback_status !== 'playing' || !music.started_at) {
+        return base;
+    }
+
+    return Math.max(0, Math.floor(base + ((Date.now() - new Date(music.started_at).getTime()) / 1000)));
+};
+
+const applyMusicResponse = (music) => {
+    localMusic.value = music;
+    musicError.value = '';
+};
+
+const submitMusicSource = async () => {
+    musicSourceForm.source_type = musicSourceTab.value;
+    musicError.value = '';
+    musicSourceErrors.value = {};
+
+    const payload = new FormData();
+    payload.append('source_type', musicSourceForm.source_type);
+    payload.append('title', (musicSourceForm.title ?? '').trim());
+
+    if (musicSourceForm.source_type === 'uploaded' && musicSourceForm.track) {
+        payload.append('track', musicSourceForm.track, musicSourceForm.track.name);
+    }
+
+    if (musicSourceForm.source_type === 'direct_url') {
+        payload.append('direct_url', (musicSourceForm.direct_url ?? '').trim());
+    }
+
+    if (musicSourceForm.source_type === 'youtube') {
+        payload.append('youtube_url', (musicSourceForm.youtube_url ?? '').trim());
+    }
+
+    isMusicSourceSubmitting.value = true;
+
+    try {
+        const response = await window.axios.post(
+            route('games.sessions.music.source.update', [props.game.id, props.session.id]),
+            payload,
+            { headers: { Accept: 'application/json' } },
+        );
+        applyMusicResponse(response.data.music);
+        musicSourceErrors.value = {};
+        musicSourceForm.reset('title', 'track', 'direct_url', 'youtube_url');
+        if (musicTrackInput.value) {
+            musicTrackInput.value.value = '';
+        }
+    } catch (error) {
+        const errors = error.response?.data?.errors ?? {};
+        const firstError = Object.values(errors).flat()[0];
+        musicSourceErrors.value = errors;
+        musicError.value = firstError ?? error.response?.data?.message ?? 'Не удалось обновить музыку сцены.';
+    } finally {
+        isMusicSourceSubmitting.value = false;
+    }
+};
+
+const updateMusicPlayback = async (playbackStatus) => {
+    musicError.value = '';
+
+    try {
+        const response = await window.axios.patch(route('games.sessions.music.playback.update', [props.game.id, props.session.id]), {
+            playback_status: playbackStatus,
+            position_seconds: playbackStatus === 'stopped' ? 0 : currentMusicPosition(),
+        });
+        applyMusicResponse(response.data.music);
+    } catch (error) {
+        musicError.value = error.response?.data?.message ?? 'Не удалось обновить playback.';
+    }
+};
+
+const youtubeVideoId = (url) => {
+    if (!url) return null;
+
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname.includes('youtu.be')) {
+            return parsed.pathname.replace('/', '') || null;
+        }
+
+        if (parsed.searchParams.get('v')) {
+            return parsed.searchParams.get('v');
+        }
+
+        const embedMatch = parsed.pathname.match(/\/(?:embed|shorts)\/([^/?]+)/);
+        return embedMatch?.[1] ?? null;
+    } catch (error) {
+        return null;
+    }
+};
+
+const postYoutubeCommand = (func, args = []) => {
+    if (!youtubeFrame.value?.contentWindow) return;
+
+    youtubeFrame.value.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func,
+        args,
+    }), '*');
+};
+
+const syncMusicPlayback = async () => {
+    const music = localMusic.value;
+    const audio = musicAudio.value;
+
+    if (!music) return;
+
+    if (audio) {
+        audio.volume = musicMuted.value ? 0 : musicVolume.value;
+        audio.muted = musicMuted.value;
+
+        if (music.source_type === 'uploaded' || music.source_type === 'direct_url') {
+            const targetPosition = currentMusicPosition();
+            if (Number.isFinite(targetPosition) && Math.abs((audio.currentTime || 0) - targetPosition) > 1.5) {
+                audio.currentTime = targetPosition;
+            }
+
+            if (music.playback_status === 'playing') {
+                try {
+                    await audio.play();
+                } catch (error) {
+                    musicError.value = 'Браузер заблокировал автозапуск. Нажмите play в локальном контроле.';
+                }
+            } else {
+                audio.pause();
+                if (music.playback_status === 'stopped') {
+                    audio.currentTime = 0;
+                }
+            }
+        }
+    }
+
+    if (music.source_type === 'youtube') {
+        postYoutubeCommand('setVolume', [musicMuted.value ? 0 : Math.round(musicVolume.value * 100)]);
+        if (music.playback_status === 'playing') {
+            postYoutubeCommand('seekTo', [currentMusicPosition(), true]);
+            postYoutubeCommand('playVideo');
+        } else {
+            postYoutubeCommand('pauseVideo');
+            if (music.playback_status === 'stopped') {
+                postYoutubeCommand('seekTo', [0, true]);
+            }
+        }
+    }
 };
 
 const toggleEncounteredNpc = (npcId) => {
@@ -983,6 +1200,7 @@ watch(() => latestRoll.value?.id, (newId, oldId) => {
 watch(() => props.inventory.characters, (characters) => syncInventoryForms(characters));
 
 watch(() => props.scene, (scene) => {
+    localMusic.value = scene.music ?? null;
     const currentPresentNpcs = scene.present_npcs ?? scene.visible_npcs ?? [];
     const currentPresentNpcIds = new Set(currentPresentNpcs.map((npc) => Number(npc.id)));
     const addedPresentNpcs = currentPresentNpcs.filter((npc) => !previousPresentSceneNpcIds.has(Number(npc.id)));
@@ -999,6 +1217,27 @@ watch(() => props.scene, (scene) => {
     applyDefaultRollSource();
 
     nextTick(() => enqueueNpcSpawnEffects(addedPresentNpcs));
+});
+
+watch(localMusic, () => {
+    nextTick(syncMusicPlayback);
+}, { deep: true, immediate: true });
+
+watch([musicVolume, musicMuted], () => {
+    if (typeof window !== 'undefined') {
+        window.localStorage?.setItem(MUSIC_VOLUME_KEY, String(musicVolume.value));
+        window.localStorage?.setItem(MUSIC_MUTED_KEY, musicMuted.value ? '1' : '0');
+    }
+
+    nextTick(syncMusicPlayback);
+});
+
+watch(isMusicExpanded, (expanded) => {
+    if (typeof window !== 'undefined') {
+        window.localStorage?.setItem(MUSIC_COLLAPSED_KEY, expanded ? '0' : '1');
+    }
+
+    nextTick(syncMusicPlayback);
 });
 
 watch(availableRollActors, () => {
@@ -1135,23 +1374,23 @@ onBeforeUnmount(() => {
                 </article>
             </aside>
 
-            <div class="absolute bottom-6 left-6 z-30 flex gap-3">
-                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-6 py-4 text-sm font-semibold uppercase tracking-[0.16em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10" @click="openCharacterModal('inventory')">
+            <div class="absolute bottom-3 left-3 z-30 flex flex-col gap-2 sm:bottom-6 sm:left-6 sm:flex-row sm:gap-3">
+                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:px-6 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="openCharacterModal('inventory')">
                     Инвентарь
                 </button>
-                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-6 py-4 text-sm font-semibold uppercase tracking-[0.16em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10" @click="openCharacterModal('stats')">
+                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:px-6 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="openCharacterModal('stats')">
                     Характеристики
                 </button>
             </div>
 
-            <div class="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 gap-2 rounded-lg border border-amber-300/20 bg-stone-950/55 px-4 py-3 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                <button v-for="diceType in diceOptions" :key="`hud-${diceType}`" type="button" class="grid h-14 w-14 place-items-center rounded-lg border border-stone-500/50 bg-stone-900/70 text-sm font-bold uppercase text-amber-100 transition hover:border-amber-300 hover:bg-amber-300/12" @click="openDiceModal(diceType)">
+            <div class="absolute bottom-3 left-1/2 z-30 grid w-[min(22rem,calc(100vw-1rem))] -translate-x-1/2 grid-cols-6 gap-1 rounded-lg border border-amber-300/20 bg-stone-950/55 px-2 py-2 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md sm:bottom-6 sm:flex sm:w-auto sm:gap-2 sm:px-4 sm:py-3">
+                <button v-for="diceType in diceOptions" :key="`hud-${diceType}`" type="button" class="grid h-10 w-full place-items-center rounded-lg border border-stone-500/50 bg-stone-900/70 text-[11px] font-bold uppercase text-amber-100 transition hover:border-amber-300 hover:bg-amber-300/12 sm:h-14 sm:w-14 sm:text-sm" @click="openDiceModal(diceType)">
                     {{ diceType }}
                 </button>
             </div>
 
-            <div class="group absolute bottom-6 right-6 z-30 w-80">
-                <div class="max-h-28 overflow-hidden rounded-lg border border-transparent bg-stone-950/20 p-3 text-sm text-stone-200 backdrop-blur-sm transition group-hover:max-h-96 group-hover:border-amber-300/20 group-hover:bg-stone-950/60">
+            <div class="group absolute bottom-20 left-1/2 z-30 w-[min(32rem,calc(100vw-1rem))] -translate-x-1/2 sm:bottom-28">
+                <div class="max-h-24 overflow-hidden rounded-lg border border-transparent bg-stone-950/24 p-3 text-sm text-stone-200 backdrop-blur-sm transition group-hover:max-h-72 group-hover:overflow-y-auto group-hover:border-amber-300/20 group-hover:bg-stone-950/66 sm:max-h-28">
                     <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Roll log</p>
                     <article v-for="roll in rollLogItems" :key="`hud-log-${roll.id}`" class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:hidden">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
@@ -1186,7 +1425,16 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <div class="absolute right-6 top-6 z-40">
+            <div class="absolute right-6 top-6 z-40 flex gap-3">
+                <button
+                    v-if="can_manage_sessions"
+                    type="button"
+                    class="grid h-14 w-14 place-items-center rounded-lg border border-violet-300/30 bg-stone-950/65 text-2xl text-violet-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-violet-200"
+                    title="Scene music"
+                    @click="showMusicModal = true"
+                >
+                    ♪
+                </button>
                 <div class="group relative">
                     <button type="button" class="grid h-14 w-14 place-items-center rounded-lg border border-amber-300/30 bg-stone-950/65 text-2xl text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200">▣</button>
                     <div class="absolute right-0 top-full hidden w-80 rounded-lg border border-amber-300/20 bg-stone-950/95 p-4 shadow-2xl group-hover:block">
@@ -1264,20 +1512,20 @@ onBeforeUnmount(() => {
                 </template>
             </div>
 
-            <div class="absolute bottom-6 left-6 z-30 flex gap-3">
-                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-8 py-4 text-sm font-semibold uppercase tracking-[0.16em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10" @click="showNpcLibraryModal = true">
+            <div class="absolute bottom-3 left-3 z-30 flex gap-2 sm:bottom-6 sm:left-6 sm:gap-3">
+                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:px-8 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="showNpcLibraryModal = true">
                     NPC
                 </button>
             </div>
 
-            <div class="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 gap-2 rounded-lg border border-amber-300/20 bg-stone-950/55 px-4 py-3 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                <button v-for="diceType in diceOptions" :key="`gm-hud-${diceType}`" type="button" class="grid h-14 w-14 place-items-center rounded-lg border border-stone-500/50 bg-stone-900/70 text-sm font-bold uppercase text-amber-100 transition hover:border-amber-300 hover:bg-amber-300/12" @click="openDiceModal(diceType)">
+            <div class="absolute bottom-3 left-1/2 z-30 grid w-[min(22rem,calc(100vw-1rem))] -translate-x-1/2 grid-cols-6 gap-1 rounded-lg border border-amber-300/20 bg-stone-950/55 px-2 py-2 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md sm:bottom-6 sm:flex sm:w-auto sm:gap-2 sm:px-4 sm:py-3">
+                <button v-for="diceType in diceOptions" :key="`gm-hud-${diceType}`" type="button" class="grid h-10 w-full place-items-center rounded-lg border border-stone-500/50 bg-stone-900/70 text-[11px] font-bold uppercase text-amber-100 transition hover:border-amber-300 hover:bg-amber-300/12 sm:h-14 sm:w-14 sm:text-sm" @click="openDiceModal(diceType)">
                     {{ diceType }}
                 </button>
             </div>
 
-            <div class="group absolute bottom-6 right-6 z-30 w-80">
-                <div class="max-h-28 overflow-hidden rounded-lg border border-transparent bg-stone-950/20 p-3 text-sm text-stone-200 backdrop-blur-sm transition group-hover:max-h-96 group-hover:border-amber-300/20 group-hover:bg-stone-950/60">
+            <div class="group absolute bottom-20 left-1/2 z-30 w-[min(32rem,calc(100vw-1rem))] -translate-x-1/2 sm:bottom-28">
+                <div class="max-h-24 overflow-hidden rounded-lg border border-transparent bg-stone-950/24 p-3 text-sm text-stone-200 backdrop-blur-sm transition group-hover:max-h-72 group-hover:overflow-y-auto group-hover:border-amber-300/20 group-hover:bg-stone-950/66 sm:max-h-28">
                     <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Roll log</p>
                     <article v-for="roll in rollLogItems" :key="`gm-hud-log-${roll.id}`" class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:hidden">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
@@ -1294,9 +1542,54 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
-        <button type="button" class="fixed bottom-24 left-6 z-[65] rounded-lg border border-amber-300/30 bg-stone-950/70 px-6 py-4 text-sm font-semibold uppercase tracking-[0.16em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10" @click="showNotesModal = true">
+        <button type="button" class="fixed left-3 top-3 z-[65] rounded-lg border border-amber-300/30 bg-stone-950/70 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:bottom-24 sm:left-6 sm:top-auto sm:px-6 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="showNotesModal = true">
             Заметки
         </button>
+
+        <aside
+            class="fixed bottom-[10.5rem] right-3 z-[65] rounded-lg border border-violet-300/25 bg-stone-950/82 text-stone-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition-all sm:bottom-6 sm:right-6"
+            :class="isMusicExpanded ? 'w-[min(22rem,calc(100vw-1.5rem))] p-4' : 'w-[min(18rem,calc(100vw-1.5rem))] p-3'"
+        >
+            <audio
+                v-if="localMusic?.audio_url && (localMusic.source_type === 'uploaded' || localMusic.source_type === 'direct_url')"
+                ref="musicAudio"
+                :src="localMusic.audio_url"
+                preload="auto"
+                @loadedmetadata="syncMusicPlayback"
+            />
+            <iframe
+                v-if="isMusicExpanded && localMusic?.source_type === 'youtube' && youtubeEmbedUrl"
+                ref="youtubeFrame"
+                :src="youtubeEmbedUrl"
+                title="YouTube music source"
+                class="mb-3 h-28 w-full rounded-md border border-stone-700/60 bg-black"
+                allow="autoplay; encrypted-media"
+                @load="syncMusicPlayback"
+            />
+            <div class="flex items-start justify-between gap-3">
+                <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-violet-300/25 bg-violet-300/10 text-lg text-violet-100 transition hover:border-violet-200" :title="isMusicExpanded ? 'Collapse music' : 'Expand music'" @click="isMusicExpanded = !isMusicExpanded">
+                    {{ isMusicExpanded ? '−' : '♪' }}
+                </button>
+                <div class="min-w-0 flex-1">
+                    <p v-if="isMusicExpanded" class="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-200/80">Scene music</p>
+                    <p class="mt-1 truncate text-sm font-semibold text-amber-50">{{ musicTitle }}</p>
+                    <p v-if="isMusicExpanded" class="mt-1 text-xs text-stone-400">{{ musicSourceLabel }}</p>
+                </div>
+                <span class="shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]" :class="musicStatusClass">
+                    {{ musicStatusLabel }}
+                </span>
+            </div>
+            <div class="mt-3 flex items-center gap-2 sm:gap-3">
+                <button type="button" class="rounded-md border border-stone-600/50 bg-stone-900/80 px-2.5 py-2 text-xs font-semibold text-stone-200 hover:border-violet-300/40" @click="musicMuted = !musicMuted">
+                    {{ musicMuted ? 'Unmute' : 'Mute' }}
+                </button>
+                <input v-model.number="musicVolume" type="range" min="0" max="1" step="0.01" class="min-w-0 flex-1 accent-violet-300" />
+                <button v-if="isMusicExpanded" type="button" class="rounded-md border border-stone-600/50 bg-stone-900/80 px-3 py-2 text-xs font-semibold text-stone-200 hover:border-violet-300/40" @click="syncMusicPlayback">
+                    Sync
+                </button>
+            </div>
+            <p v-if="musicError" class="mt-3 text-xs leading-5 text-rose-200">{{ musicError }}</p>
+        </aside>
 
         <SceneNpcSpawnOverlay :effect="activeNpcSpawnEffect" />
         <SceneDiceRollOverlay :animation="activeDiceRollAnimation" />
@@ -1326,8 +1619,8 @@ onBeforeUnmount(() => {
         </div>
 
         <div
-            class="fixed bottom-6 transition-all duration-200"
-            :class="isChatExpanded ? 'right-6 z-[80] w-[min(48rem,calc(100vw-12rem))]' : 'right-[25rem] z-[70] w-80'"
+            class="fixed bottom-[16.5rem] right-3 transition-all duration-200 sm:bottom-6"
+            :class="isChatExpanded ? 'z-[80] w-[min(48rem,calc(100vw-1.5rem))] sm:right-6 sm:w-[min(48rem,calc(100vw-12rem))]' : 'z-[70] w-[min(20rem,calc(100vw-1.5rem))] sm:right-[25rem] sm:w-80'"
             @mouseenter="handleChatMouseEnter"
             @mouseleave="handleChatMouseLeave"
         >
@@ -1651,7 +1944,12 @@ onBeforeUnmount(() => {
                         </section>
 
                         <section class="rounded-lg border border-stone-600/40 bg-stone-950/45 p-4">
-                            <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Backgrounds</h3>
+                            <div class="flex items-center justify-between gap-3">
+                                <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Backgrounds</h3>
+                                <button type="button" class="rounded-md border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-xs font-semibold text-violet-100 hover:bg-violet-400/15" @click="showMusicModal = true">
+                                    Music
+                                </button>
+                            </div>
                             <div class="mt-4 grid gap-3">
                                 <button type="button" class="rounded-lg border border-stone-600/40 bg-stone-950/60 px-3 py-2 text-left text-sm text-stone-200 transition hover:border-amber-300/40" :class="!scene.background ? 'ring-2 ring-amber-300/50' : ''" @click="setSceneBackground('')">
                                     No background
@@ -1830,6 +2128,77 @@ onBeforeUnmount(() => {
             </div>
         </Modal>
 
+        <Modal :show="showMusicModal" max-width="3xl" @close="showMusicModal = false">
+            <div class="p-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <p class="fantasy-kicker">Scene music</p>
+                        <h2 class="text-xl font-semibold text-amber-50">Музыка сцены</h2>
+                        <p class="mt-1 text-sm text-stone-400">GM/co-GM управляет общим источником и playback для всех участников.</p>
+                    </div>
+                    <SecondaryButton @click="showMusicModal = false">Close</SecondaryButton>
+                </div>
+
+                <div class="mt-6 rounded-lg border border-violet-300/20 bg-stone-950/60 p-4">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-amber-50">{{ musicTitle }}</p>
+                            <p class="mt-1 text-xs uppercase tracking-[0.16em] text-stone-500">{{ musicSourceLabel }} · {{ musicStatusLabel }}</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <SecondaryButton :disabled="!hasMusicSource" @click="updateMusicPlayback('playing')">Play</SecondaryButton>
+                            <SecondaryButton :disabled="!hasMusicSource" @click="updateMusicPlayback('paused')">Pause</SecondaryButton>
+                            <DangerButton :disabled="!hasMusicSource" @click="updateMusicPlayback('stopped')">Stop</DangerButton>
+                        </div>
+                    </div>
+                    <p v-if="musicError" class="mt-3 text-sm text-rose-200">{{ musicError }}</p>
+                </div>
+
+                <div class="mt-6 flex flex-wrap gap-2">
+                    <button type="button" class="rounded-md px-4 py-2 text-sm font-semibold" :class="musicSourceTab === 'uploaded' ? 'bg-violet-400 text-stone-950' : 'bg-stone-950 text-stone-300'" @click="musicSourceTab = 'uploaded'">
+                        Upload
+                    </button>
+                    <button type="button" class="rounded-md px-4 py-2 text-sm font-semibold" :class="musicSourceTab === 'direct_url' ? 'bg-violet-400 text-stone-950' : 'bg-stone-950 text-stone-300'" @click="musicSourceTab = 'direct_url'">
+                        Direct URL
+                    </button>
+                    <button type="button" class="rounded-md px-4 py-2 text-sm font-semibold" :class="musicSourceTab === 'youtube' ? 'bg-violet-400 text-stone-950' : 'bg-stone-950 text-stone-300'" @click="musicSourceTab = 'youtube'">
+                        YouTube
+                    </button>
+                </div>
+
+                <form class="mt-6 space-y-5" @submit.prevent="submitMusicSource">
+                    <div>
+                        <InputLabel for="music-title" value="Название" />
+                        <TextInput id="music-title" v-model="musicSourceForm.title" class="mt-2 block w-full" placeholder="Например: Tavern at midnight" />
+                        <InputError class="mt-2" :message="musicSourceErrors.title" />
+                    </div>
+
+                    <div v-if="musicSourceTab === 'uploaded'">
+                        <InputLabel for="music-track" value="Аудиофайл" />
+                        <input id="music-track" ref="musicTrackInput" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.webm" class="fantasy-file mt-2 block w-full" @change="setMusicTrackFile" />
+                        <InputError class="mt-2" :message="musicSourceErrors.track" />
+                    </div>
+
+                    <div v-else-if="musicSourceTab === 'direct_url'">
+                        <InputLabel for="music-direct-url" value="Прямая ссылка на аудио" />
+                        <TextInput id="music-direct-url" v-model="musicSourceForm.direct_url" class="mt-2 block w-full" placeholder="https://example.com/track.mp3" />
+                        <InputError class="mt-2" :message="musicSourceErrors.direct_url" />
+                    </div>
+
+                    <div v-else>
+                        <InputLabel for="music-youtube-url" value="YouTube URL" />
+                        <TextInput id="music-youtube-url" v-model="musicSourceForm.youtube_url" class="mt-2 block w-full" placeholder="https://www.youtube.com/watch?v=..." />
+                        <InputError class="mt-2" :message="musicSourceErrors.youtube_url" />
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <p class="text-xs leading-5 text-stone-500">Новый источник применяется к активной сессии и сбрасывает playback в stopped.</p>
+                        <PrimaryButton :disabled="isMusicSourceSubmitting">{{ isMusicSourceSubmitting ? 'Saving...' : 'Apply source' }}</PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
+
         <Modal :show="showBackgroundUploadModal" max-width="lg" @close="showBackgroundUploadModal = false">
             <div class="p-6">
                 <div class="flex items-start justify-between gap-4">
@@ -1938,11 +2307,36 @@ onBeforeUnmount(() => {
 
                 <form v-if="characterModalTab === 'stats' && can_manage_sessions" class="mt-6 space-y-6" @submit.prevent="updateGmCharacterSheet">
                     <section>
-                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Attributes</h3>
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Attributes</h3>
+                            <div class="text-xs uppercase tracking-[0.16em]" :class="gmAttributePointBalance.available < 0 ? 'text-rose-300' : 'text-stone-400'">
+                                Base {{ gmAttributePointBalance.base }} · Returned +{{ gmAttributePointBalance.gained }} · Spent -{{ gmAttributePointBalance.spent }} · Left {{ gmAttributePointBalance.available }}
+                            </div>
+                        </div>
+                        <div v-if="gmSheetForm.errors.attribute_values" class="mt-3 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                            {{ gmSheetForm.errors.attribute_values }}
+                        </div>
+                        <div v-else-if="gmAttributePointBalance.available < 0" class="mt-3 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                            Attribute point balance is negative.
+                        </div>
                         <div class="mt-3 grid gap-3 sm:grid-cols-3">
                             <label v-for="item in templateItems('attributes')" :key="`gm-attr-${item.key}`" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
                                 <span class="text-sm text-stone-400">{{ item.label }}</span>
-                                <input v-model.number="gmSheetForm.attribute_values[item.key]" type="number" class="fantasy-input mt-2 block w-full" />
+                                <input
+                                    v-model.number="gmSheetForm.attribute_values[item.key]"
+                                    type="number"
+                                    :min="item.min ?? undefined"
+                                    :max="item.max ?? undefined"
+                                    class="fantasy-input mt-2 block w-full"
+                                />
+                                <span
+                                    class="mt-2 block text-[11px] font-semibold uppercase tracking-[0.16em]"
+                                    :class="gmAttributeDelta(item) < 0 ? 'text-emerald-300' : gmAttributeDelta(item) > 0 ? 'text-rose-300' : 'text-stone-500'"
+                                >
+                                    <template v-if="gmAttributeDelta(item) < 0">Returned +{{ Math.abs(gmAttributeDelta(item)) }}</template>
+                                    <template v-else-if="gmAttributeDelta(item) > 0">Spent -{{ gmAttributeDelta(item) }}</template>
+                                    <template v-else>Base</template>
+                                </span>
                             </label>
                         </div>
                     </section>
@@ -1968,7 +2362,7 @@ onBeforeUnmount(() => {
                             </label>
                         </div>
                     </section>
-                    <PrimaryButton :disabled="gmSheetForm.processing">{{ gmSheetForm.processing ? 'Saving...' : 'Save stats' }}</PrimaryButton>
+                    <PrimaryButton :disabled="gmSheetForm.processing || gmAttributePointBalance.available < 0">{{ gmSheetForm.processing ? 'Saving...' : 'Save stats' }}</PrimaryButton>
                 </form>
 
                 <div v-else-if="characterModalTab === 'stats'" class="mt-6 space-y-6">

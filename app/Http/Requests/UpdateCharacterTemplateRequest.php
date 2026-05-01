@@ -30,6 +30,7 @@ class UpdateCharacterTemplateRequest extends FormRequest
             'attributes.items.*.player_editable' => ['boolean'],
             'attributes.items.*.roll.enabled' => ['boolean'],
             'attributes.items.*.roll.dice' => ['required', 'in:d4,d6,d8,d10,d12,d20,d100'],
+            'attributes.items.*.roll.modifier_step' => ['nullable', 'integer', 'min:1', 'max:100'],
 
             'skills.points' => ['required', 'integer', 'min:0', 'max:100'],
             'skills.items' => ['required', 'array', 'min:0', 'max:40'],
@@ -166,6 +167,7 @@ class UpdateCharacterTemplateRequest extends FormRequest
                     'roll' => [
                         'enabled' => (bool) ($item['roll']['enabled'] ?? false),
                         'dice' => $item['roll']['dice'],
+                        'modifier_step' => (int) ($item['roll']['modifier_step'] ?? 1),
                     ],
                 ])->values()->all(),
             ],

@@ -12,8 +12,10 @@ use App\Http\Controllers\GameNoteController;
 use App\Http\Controllers\GameNpcController;
 use App\Http\Controllers\GameSessionController;
 use App\Http\Controllers\GameSessionGmPresenceController;
+use App\Http\Controllers\GameTicketController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionDiceRollController;
+use App\Http\Controllers\SessionMusicController;
 use App\Http\Controllers\SessionSceneController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -39,6 +41,11 @@ Route::middleware('auth')->group(function () {
     Route::delete('/games/{game}/notes/{note}', [GameNoteController::class, 'destroy'])->name('games.notes.destroy');
     Route::post('/games/{game}/notes/{note}/attachments', [GameNoteController::class, 'storeAttachment'])->name('games.notes.attachments.store');
     Route::delete('/games/{game}/notes/{note}/attachments/{attachment}', [GameNoteController::class, 'destroyAttachment'])->name('games.notes.attachments.destroy');
+    Route::get('/games/{game}/tickets', [GameTicketController::class, 'index'])->name('games.tickets.index');
+    Route::post('/games/{game}/tickets', [GameTicketController::class, 'store'])->name('games.tickets.store');
+    Route::get('/games/{game}/tickets/{ticket}', [GameTicketController::class, 'show'])->name('games.tickets.show');
+    Route::post('/games/{game}/tickets/{ticket}/messages', [GameTicketController::class, 'storeMessage'])->name('games.tickets.messages.store');
+    Route::patch('/games/{game}/tickets/{ticket}/status', [GameTicketController::class, 'updateStatus'])->name('games.tickets.status.update');
     Route::get('/games/{game}/character', [CharacterController::class, 'edit'])->name('games.character.edit');
     Route::post('/games/{game}/character', [CharacterController::class, 'upsert'])->name('games.character.upsert');
     Route::get('/games/{game}/characters', [CharacterController::class, 'index'])->name('games.characters.index');
@@ -74,6 +81,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/games/{game}/sessions/{session}/scene', [SessionSceneController::class, 'update'])->name('games.sessions.scene.update');
     Route::post('/games/{game}/sessions/{session}/scene-npcs', [SessionSceneController::class, 'storeNpc'])->name('games.sessions.scene-npcs.store');
     Route::patch('/games/{game}/sessions/{session}/scene-npcs/{sceneNpc}', [SessionSceneController::class, 'updateNpc'])->name('games.sessions.scene-npcs.update');
+    Route::post('/games/{game}/sessions/{session}/music/source', [SessionMusicController::class, 'updateSource'])->name('games.sessions.music.source.update');
+    Route::patch('/games/{game}/sessions/{session}/music/playback', [SessionMusicController::class, 'updatePlayback'])->name('games.sessions.music.playback.update');
     Route::post('/games/{game}/sessions/{session}/dice-rolls', [SessionDiceRollController::class, 'store'])->name('games.sessions.dice-rolls.store');
     Route::post('/invites/{token}/accept', [GameInviteController::class, 'accept'])->name('invites.accept');
 

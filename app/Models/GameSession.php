@@ -58,4 +58,9 @@ class GameSession extends Model
     {
         return $this->hasMany(GameSessionGmConnection::class);
     }
+
+    public function musicState(): HasOne
+    {
+        return $this->hasOne(SessionMusicState::class);
+    }
 }

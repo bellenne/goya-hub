@@ -3,8 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Models\Character;
+use App\Services\Characters\AttributePointBalance;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class UpdateCharacterSheetRequest extends FormRequest
 {
@@ -21,7 +23,7 @@ class UpdateCharacterSheetRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $rules = [
             'attribute_values' => ['required', 'array'],
             'attribute_values.*' => ['nullable', 'integer'],
             'skill_values' => ['required', 'array'],
@@ -30,6 +32,17 @@ class UpdateCharacterSheetRequest extends FormRequest
             'extra_field_values.*' => ['nullable'],
             'back_to_session_id' => ['nullable', 'integer'],
         ];
+
+        /** @var Character|null $character */
+        $character = $this->route('character');
+
+        if ($character instanceof Character) {
+            foreach (($character->game->resolvedCharacterTemplate()['attributes']['items'] ?? []) as $item) {
+                $rules["attribute_values.{$item['key']}"] = $this->numberRules($item);
+            }
+        }
+
+        return $rules;
     }
 
     protected function prepareForValidation(): void
@@ -91,6 +104,45 @@ class UpdateCharacterSheetRequest extends FormRequest
             'skill_values' => $skillValues,
             'extra_field_values' => $extraFieldValues,
         ]);
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        /** @var Character|null $character */
+        $character = $this->route('character');
+
+        if (! $character instanceof Character) {
+            return;
+        }
+
+        $template = $character->game->resolvedCharacterTemplate();
+
+        $validator->after(function (Validator $validator) use ($template) {
+            $attributeBalance = AttributePointBalance::calculate(
+                $this->input('attribute_values', []),
+                $template['attributes']['items'] ?? [],
+                (int) ($template['attributes']['points'] ?? 0),
+            );
+
+            if ($attributeBalance['available'] < 0) {
+                $validator->errors()->add('attribute_values', 'Attribute free points balance is negative.');
+            }
+        });
+    }
+
+    protected function numberRules(array $item): array
+    {
+        $rules = ['required', 'integer'];
+
+        if (($item['min'] ?? null) !== null) {
+            $rules[] = 'min:'.$item['min'];
+        }
+
+        if (($item['max'] ?? null) !== null) {
+            $rules[] = 'max:'.$item['max'];
+        }
+
+        return $rules;
     }
 
     protected function skillItems(array $template): array
