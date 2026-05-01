@@ -2,6 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import { useGmSessionPresence } from '@/Composables/useGmSessionPresence';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
@@ -15,13 +16,71 @@ const page = usePage();
 const joinForm = useForm({});
 const startForm = useForm({});
 const onlineUsers = ref([]);
+const lifecycleNotice = ref(props.session.status === 'gm_disconnected_grace'
+    ? {
+        tone: 'warning',
+        title: 'GM вышел из session page',
+        text: 'Сессия ещё жива. Если GM не вернётся в течение 5 минут, она завершится.',
+        gm_grace_ends_at: props.session.gm_grace_ends_at,
+    }
+    : null);
 let presenceChannel = null;
+let lifecycleNoticeTimeout = null;
 
 const participantIds = computed(() => props.session.participants.map((participant) => participant.user.id));
 const isJoined = computed(() => participantIds.value.includes(page.props.auth.user.id));
 
 const refreshLobby = () => {
     router.reload({ only: ['session', 'can_manage_sessions'], preserveScroll: true });
+};
+
+const handleLifecycle = (payload) => {
+    if (lifecycleNoticeTimeout) {
+        clearTimeout(lifecycleNoticeTimeout);
+        lifecycleNoticeTimeout = null;
+    }
+
+    if (['connected', 'heartbeat'].includes(payload.event) && payload.status !== 'gm_disconnected_grace' && payload.status !== 'ended') {
+        if (lifecycleNotice.value?.tone === 'warning') {
+            lifecycleNotice.value = null;
+        }
+
+        return;
+    }
+
+    if (payload.event === 'gm_disconnected') {
+        lifecycleNotice.value = {
+            tone: 'warning',
+            title: 'GM вышел из session page',
+            text: 'Если GM не вернётся в течение 5 минут, сессия завершится.',
+            gm_grace_ends_at: payload.gm_grace_ends_at,
+        };
+        refreshLobby();
+        return;
+    }
+
+    if (payload.event === 'ended' || payload.status === 'ended') {
+        lifecycleNotice.value = {
+            tone: 'danger',
+            title: 'Сессия завершена',
+            text: 'GM не вернулся за 5 минут. Вы будете перенаправлены к списку сессий.',
+        };
+        setTimeout(() => router.visit(route('games.sessions.index', props.game.id)), 2500);
+        return;
+    }
+
+    if (payload.event === 'gm_returned') {
+        lifecycleNotice.value = {
+            tone: 'success',
+            title: 'GM вернулся',
+            text: 'Сессия продолжается.',
+        };
+        lifecycleNoticeTimeout = setTimeout(() => {
+            lifecycleNotice.value = null;
+        }, 5000);
+        refreshLobby();
+        return;
+    }
 };
 
 const connectPresence = () => {
@@ -41,14 +100,26 @@ const connectPresence = () => {
         })
         .listen('.session.lobby.updated', () => {
             refreshLobby();
-        });
+        })
+        .listen('.session.lifecycle.updated', handleLifecycle);
 };
+
+useGmSessionPresence({
+    enabled: props.can_manage_sessions && props.session.status !== 'ended',
+    gameId: props.game.id,
+    sessionId: props.session.id,
+    onStatus: handleLifecycle,
+});
 
 onMounted(() => {
     connectPresence();
 });
 
 onBeforeUnmount(() => {
+    if (lifecycleNoticeTimeout) {
+        clearTimeout(lifecycleNoticeTimeout);
+    }
+
     if (window.Echo && presenceChannel) {
         window.Echo.leave(props.session.presence_channel);
     }
@@ -88,6 +159,22 @@ const submitStart = () => {
         <div class="py-10">
             <div class="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
                 <div
+                    v-if="lifecycleNotice"
+                    class="rounded-lg border px-4 py-3 text-sm"
+                    :class="{
+                        'border-amber-400/40 bg-amber-400/10 text-amber-100': lifecycleNotice.tone === 'warning',
+                        'border-emerald-400/40 bg-emerald-400/10 text-emerald-100': lifecycleNotice.tone === 'success',
+                        'border-red-400/40 bg-red-400/10 text-red-100': lifecycleNotice.tone === 'danger',
+                    }"
+                >
+                    <p class="font-semibold">{{ lifecycleNotice.title }}</p>
+                    <p class="mt-1">{{ lifecycleNotice.text }}</p>
+                    <p v-if="lifecycleNotice.gm_grace_ends_at" class="mt-1 text-xs opacity-80">
+                        Grace до {{ new Date(lifecycleNotice.gm_grace_ends_at).toLocaleTimeString() }}
+                    </p>
+                </div>
+
+                <div
                     v-if="page.props.flash.success"
                     class="rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200"
                 >
@@ -112,7 +199,7 @@ const submitStart = () => {
 
                         <div class="mt-6 flex flex-wrap gap-3">
                             <form v-if="!isJoined" @submit.prevent="submitJoin">
-                                <PrimaryButton :disabled="joinForm.processing">Войти в лобби</PrimaryButton>
+                                <PrimaryButton :disabled="joinForm.processing || session.status === 'ended'">Войти в лобби</PrimaryButton>
                             </form>
                             <form v-if="can_manage_sessions && session.status === 'lobby'" @submit.prevent="submitStart">
                                 <PrimaryButton :disabled="startForm.processing">Начать игру</PrimaryButton>

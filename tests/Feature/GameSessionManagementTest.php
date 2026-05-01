@@ -5,9 +5,13 @@ namespace Tests\Feature;
 use App\Enums\GameRole;
 use App\Enums\SessionStatus;
 use App\Events\SessionLobbyUpdated;
+use App\Events\SessionLifecycleUpdated;
+use App\Jobs\EndGameSessionAfterGmGrace;
 use App\Models\Game;
 use App\Models\User;
+use App\Services\Sessions\TrackGmSessionPresence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -113,6 +117,84 @@ class GameSessionManagementTest extends TestCase
         ]);
 
         Event::assertDispatched(SessionLobbyUpdated::class);
+    }
+
+    public function test_gm_disconnect_starts_grace_and_return_cancels_it(): void
+    {
+        Event::fake([SessionLifecycleUpdated::class]);
+
+        [$game, $gm, $player, $session] = $this->createGameWithSession();
+        $session->update([
+            'status' => SessionStatus::Active,
+            'started_at' => now(),
+        ]);
+
+        $this->actingAs($gm)->postJson(route('games.sessions.gm-presence.connect', [$game, $session]), [
+            'connection_id' => 'gm-tab-1',
+        ])->assertOk();
+
+        $this->actingAs($gm)->postJson(route('games.sessions.gm-presence.disconnect', [$game, $session]), [
+            'connection_id' => 'gm-tab-1',
+        ])->assertOk();
+
+        $session->refresh();
+        $this->assertSame(SessionStatus::GmDisconnectedGrace, $session->status);
+        $this->assertSame(SessionStatus::Active->value, $session->status_before_gm_disconnect);
+        $this->assertNotNull($session->gm_grace_ends_at);
+
+        Event::assertDispatched(SessionLifecycleUpdated::class, fn (SessionLifecycleUpdated $event) => $event->event === 'gm_disconnected');
+
+        $this->actingAs($gm)->postJson(route('games.sessions.gm-presence.connect', [$game, $session]), [
+            'connection_id' => 'gm-tab-2',
+        ])->assertOk();
+
+        $session->refresh();
+        $this->assertSame(SessionStatus::Active, $session->status);
+        $this->assertNull($session->gm_grace_ends_at);
+        $this->assertNull($session->status_before_gm_disconnect);
+
+        Event::assertDispatched(SessionLifecycleUpdated::class, fn (SessionLifecycleUpdated $event) => $event->event === 'gm_returned');
+    }
+
+    public function test_expired_gm_grace_ends_session_and_blocks_rejoin(): void
+    {
+        Event::fake([SessionLifecycleUpdated::class]);
+
+        [$game, $gm, $player, $session] = $this->createGameWithSession();
+        $session->update([
+            'status' => SessionStatus::Active,
+            'started_at' => now(),
+        ]);
+
+        $this->actingAs($gm)->postJson(route('games.sessions.gm-presence.connect', [$game, $session]), [
+            'connection_id' => 'gm-tab-1',
+        ])->assertOk();
+
+        $this->actingAs($gm)->postJson(route('games.sessions.gm-presence.disconnect', [$game, $session]), [
+            'connection_id' => 'gm-tab-1',
+        ])->assertOk();
+
+        Carbon::setTestNow($session->fresh()->gm_grace_ends_at->copy()->addSecond());
+
+        (new EndGameSessionAfterGmGrace($session->id))->handle(app(TrackGmSessionPresence::class));
+
+        Carbon::setTestNow();
+
+        $session->refresh();
+        $this->assertSame(SessionStatus::Ended, $session->status);
+        $this->assertNotNull($session->ended_at);
+
+        $newPlayer = User::factory()->create();
+        $game->members()->create([
+            'user_id' => $newPlayer->id,
+            'role' => GameRole::Player,
+        ]);
+
+        $this->actingAs($newPlayer)->post(route('games.sessions.join-by-code', $game), [
+            'invite_code' => $session->invite_code,
+        ])->assertConflict();
+
+        Event::assertDispatched(SessionLifecycleUpdated::class, fn (SessionLifecycleUpdated $event) => $event->event === 'ended');
     }
 
     protected function createGameWithSession(bool $includePlayer = true): array

@@ -16,12 +16,21 @@ class GameSession extends Model
         'invite_code',
         'invite_token',
         'status',
+        'started_at',
+        'ended_at',
+        'status_before_gm_disconnect',
+        'gm_grace_started_at',
+        'gm_grace_ends_at',
     ];
 
     protected function casts(): array
     {
         return [
             'status' => SessionStatus::class,
+            'started_at' => 'datetime',
+            'ended_at' => 'datetime',
+            'gm_grace_started_at' => 'datetime',
+            'gm_grace_ends_at' => 'datetime',
         ];
     }
 
@@ -43,5 +52,10 @@ class GameSession extends Model
     public function diceRolls(): HasMany
     {
         return $this->hasMany(SessionDiceRoll::class, 'game_session_id');
+    }
+
+    public function gmConnections(): HasMany
+    {
+        return $this->hasMany(GameSessionGmConnection::class);
     }
 }

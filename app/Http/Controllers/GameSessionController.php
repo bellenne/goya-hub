@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class GameSessionController extends Controller
 {
@@ -48,6 +49,11 @@ class GameSessionController extends Controller
                     'status_label' => $session->status->label(),
                     'participants_count' => $session->participants()->count(),
                     'invite_link' => route('sessions.invites.show', $session->invite_token),
+                    'started_at' => ($session->started_at ?? $session->created_at)?->toISOString(),
+                    'ended_at' => $session->ended_at?->toISOString(),
+                    'duration_seconds' => $this->durationSeconds($session),
+                    'is_openable' => $session->status !== SessionStatus::Ended,
+                    'gm_grace_ends_at' => $session->gm_grace_ends_at?->toISOString(),
                 ]),
         ]);
     }
@@ -70,7 +76,13 @@ class GameSessionController extends Controller
         $sceneState = $ensureSessionSceneState->handle($session);
         $sceneState->load(['background', 'sceneNpcs.npc', 'speaker']);
 
-        if ($session->status === SessionStatus::Active) {
+        if (
+            $session->status === SessionStatus::Active
+            || (
+                $session->status === SessionStatus::GmDisconnectedGrace
+                && $session->status_before_gm_disconnect === SessionStatus::Active->value
+            )
+        ) {
             return Inertia::render('Games/Sessions/Table', [
                 'game' => [
                     'id' => $game->id,
@@ -152,8 +164,11 @@ class GameSessionController extends Controller
         abort_unless($session->game_id === $game->id, 404);
         Gate::authorize('start', $session);
 
+        abort_if($session->status === SessionStatus::Ended, HttpResponse::HTTP_CONFLICT);
+
         $session->update([
             'status' => SessionStatus::Active,
+            'started_at' => $session->started_at ?? now(),
         ]);
 
         broadcast(new SessionLobbyUpdated($session->fresh(['game', 'participants.user'])))->toOthers();
@@ -171,6 +186,12 @@ class GameSessionController extends Controller
             'invite_link' => route('sessions.invites.show', $session->invite_token),
             'status' => $session->status->value,
             'status_label' => $session->status->label(),
+            'status_before_gm_disconnect' => $session->status_before_gm_disconnect,
+            'started_at' => ($session->started_at ?? $session->created_at)?->toISOString(),
+            'ended_at' => $session->ended_at?->toISOString(),
+            'duration_seconds' => $this->durationSeconds($session),
+            'gm_grace_started_at' => $session->gm_grace_started_at?->toISOString(),
+            'gm_grace_ends_at' => $session->gm_grace_ends_at?->toISOString(),
             'presence_channel' => "session.lobby.{$session->id}",
             'participants' => $session->participants
                 ->sortBy('joined_at')
@@ -446,5 +467,14 @@ class GameSessionController extends Controller
                     'is_custom' => $inventoryItem->item_id === null,
                 ]),
         ];
+    }
+
+    protected function durationSeconds(GameSession $session): ?int
+    {
+        if ($session->ended_at === null) {
+            return null;
+        }
+
+        return (int) ($session->started_at ?? $session->created_at)->diffInSeconds($session->ended_at);
     }
 }

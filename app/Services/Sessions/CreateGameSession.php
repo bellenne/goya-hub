@@ -16,6 +16,7 @@ class CreateGameSession
             'invite_code' => strtoupper(Str::random(6)),
             'invite_token' => Str::random(64),
             'status' => SessionStatus::Lobby,
+            'started_at' => now(),
         ]);
     }
 }

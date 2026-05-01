@@ -21,9 +21,27 @@ const showJoinModal = ref(false);
 const createForm = useForm({ title: '' });
 const joinForm = useForm({ invite_code: '' });
 
-const activeSessionsCount = computed(() => props.sessions.filter((session) => session.status === 'active').length);
-const waitingSessionsCount = computed(() => props.sessions.filter((session) => session.status !== 'active').length);
+const activeSessionsCount = computed(() => props.sessions.filter((session) => ['active', 'gm_disconnected_grace'].includes(session.status)).length);
+const endedSessionsCount = computed(() => props.sessions.filter((session) => session.status === 'ended').length);
 const totalParticipantsCount = computed(() => props.sessions.reduce((total, session) => total + session.participants_count, 0));
+
+const formatDateTime = (value) => (value ? new Date(value).toLocaleString() : '—');
+const formatDuration = (seconds) => {
+    if (seconds === null || seconds === undefined) {
+        return '—';
+    }
+
+    const total = Number(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+
+    return [
+        hours ? `${hours} ч` : null,
+        minutes ? `${minutes} мин` : null,
+        !hours && !minutes ? `${secs} сек` : null,
+    ].filter(Boolean).join(' ');
+};
 
 const submitCreate = () => {
     createForm.post(route('games.sessions.store', props.game.id), {
@@ -98,6 +116,10 @@ const submitJoinByCode = () => {
                                     <p class="text-sm text-stone-400">Участники</p>
                                     <p class="mt-2 text-3xl font-semibold text-white">{{ totalParticipantsCount }}</p>
                                 </article>
+                                <article class="rounded-[1.35rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur">
+                                    <p class="text-sm text-stone-400">Завершены</p>
+                                    <p class="mt-2 text-3xl font-semibold text-white">{{ endedSessionsCount }}</p>
+                                </article>
                             </div>
                         </div>
 
@@ -146,6 +168,7 @@ const submitJoinByCode = () => {
                             v-for="session in sessions"
                             :key="session.id"
                             class="group rounded-[1.5rem] border border-stone-700/50 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.12),transparent_12rem),rgba(18,18,16,0.92)] p-5 transition duration-300 hover:-translate-y-1 hover:border-amber-300/30 hover:shadow-[0_26px_60px_rgba(0,0,0,0.32)]"
+                            :class="session.status === 'ended' ? 'opacity-75 hover:translate-y-0 hover:border-stone-700/50' : ''"
                         >
                             <div class="flex items-start justify-between gap-4">
                                 <div>
@@ -154,8 +177,12 @@ const submitJoinByCode = () => {
                                 </div>
                                 <div
                                     class="rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]"
-                                    :class="session.status === 'active'
+                                    :class="session.status === 'ended'
+                                        ? 'border-red-300/30 bg-red-400/10 text-red-100'
+                                        : session.status === 'active'
                                         ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-100'
+                                        : session.status === 'gm_disconnected_grace'
+                                        ? 'border-amber-300/30 bg-amber-400/10 text-amber-100'
                                         : 'border-white/10 bg-white/[0.05] text-stone-300'"
                                 >
                                     {{ session.status_label }}
@@ -173,12 +200,27 @@ const submitJoinByCode = () => {
                                 </div>
                             </div>
 
+                            <div v-if="session.status === 'ended'" class="mt-4 grid gap-3 rounded-2xl border border-red-300/15 bg-red-500/5 px-4 py-3 text-sm">
+                                <div class="flex justify-between gap-3">
+                                    <span class="text-stone-500">Старт</span>
+                                    <span class="text-stone-200">{{ formatDateTime(session.started_at) }}</span>
+                                </div>
+                                <div class="flex justify-between gap-3">
+                                    <span class="text-stone-500">Завершение</span>
+                                    <span class="text-stone-200">{{ formatDateTime(session.ended_at) }}</span>
+                                </div>
+                                <div class="flex justify-between gap-3">
+                                    <span class="text-stone-500">Длительность</span>
+                                    <span class="text-stone-200">{{ formatDuration(session.duration_seconds) }}</span>
+                                </div>
+                            </div>
+
                             <div class="mt-4 rounded-2xl border border-white/10 bg-stone-950/70 px-4 py-3">
                                 <div class="text-[11px] uppercase tracking-[0.18em] text-stone-500">Ссылка приглашения</div>
                                 <input :value="session.invite_link" readonly class="mt-2 block w-full bg-transparent text-sm text-stone-300 outline-none" />
                             </div>
 
-                            <Link :href="route('games.sessions.show', [game.id, session.id])" class="mt-5 block">
+                            <Link v-if="session.is_openable" :href="route('games.sessions.show', [game.id, session.id])" class="mt-5 block">
                                 <div class="flex items-center justify-between text-sm">
                                     <span class="text-stone-500 transition group-hover:text-stone-300">Открыть сессию</span>
                                     <span class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-200/25 bg-amber-400/10 text-lg text-amber-100 transition group-hover:translate-x-1">
@@ -186,6 +228,9 @@ const submitJoinByCode = () => {
                                     </span>
                                 </div>
                             </Link>
+                            <div v-else class="mt-5 rounded-2xl border border-red-300/15 bg-red-500/5 px-4 py-3 text-sm text-red-100">
+                                Завершённую сессию нельзя открыть повторно.
+                            </div>
                         </article>
                     </div>
                 </section>

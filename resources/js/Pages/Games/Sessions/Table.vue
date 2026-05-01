@@ -7,6 +7,7 @@ import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import { useGmSessionPresence } from '@/Composables/useGmSessionPresence';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -52,6 +53,7 @@ let inventoryChannel = null;
 let animationTimeout = null;
 let rollResultTimeout = null;
 let contextMenuTimeout = null;
+let lifecycleNoticeTimeout = null;
 const rollLogTimeouts = new Map();
 
 const sceneForm = useForm({
@@ -139,6 +141,14 @@ const gmSheetForm = useForm({
     extra_field_values: {},
     back_to_session_id: props.session.id,
 });
+const lifecycleNotice = ref(props.session.status === 'gm_disconnected_grace'
+    ? {
+        tone: 'warning',
+        title: 'GM вышел из session page',
+        text: 'Если GM не вернётся в течение 5 минут, сессия завершится.',
+        gm_grace_ends_at: props.session.gm_grace_ends_at,
+    }
+    : null);
 
 const allSpeakers = computed(() => [
     ...props.scene.controls.speakers.characters.map((speaker) => ({ ...speaker, type: 'character', label: `${speaker.name} · персонаж` })),
@@ -497,6 +507,61 @@ const refreshInventory = () => router.reload({
     onSuccess: (pageData) => syncInventoryForms(pageData.props.inventory?.characters ?? []),
 });
 
+const handleLifecycle = (payload) => {
+    if (lifecycleNoticeTimeout) {
+        clearTimeout(lifecycleNoticeTimeout);
+        lifecycleNoticeTimeout = null;
+    }
+
+    if (['connected', 'heartbeat'].includes(payload.event) && payload.status !== 'gm_disconnected_grace' && payload.status !== 'ended') {
+        if (lifecycleNotice.value?.tone === 'warning') {
+            lifecycleNotice.value = null;
+        }
+
+        return;
+    }
+
+    if (payload.event === 'gm_disconnected' || payload.status === 'gm_disconnected_grace') {
+        lifecycleNotice.value = {
+            tone: 'warning',
+            title: 'GM вышел из session page',
+            text: 'Если GM не вернётся в течение 5 минут, сессия завершится.',
+            gm_grace_ends_at: payload.gm_grace_ends_at,
+        };
+        router.reload({ only: ['session'], preserveScroll: true });
+        return;
+    }
+
+    if (payload.event === 'gm_returned') {
+        lifecycleNotice.value = {
+            tone: 'success',
+            title: 'GM вернулся',
+            text: 'Сессия продолжается.',
+        };
+        lifecycleNoticeTimeout = setTimeout(() => {
+            lifecycleNotice.value = null;
+        }, 5000);
+        router.reload({ only: ['session'], preserveScroll: true });
+        return;
+    }
+
+    if (payload.event === 'ended' || payload.status === 'ended') {
+        lifecycleNotice.value = {
+            tone: 'danger',
+            title: 'Сессия завершена',
+            text: 'GM не вернулся за 5 минут. Вы будете перенаправлены к списку сессий.',
+        };
+        setTimeout(() => router.visit(route('games.sessions.index', props.game.id)), 2500);
+    }
+};
+
+useGmSessionPresence({
+    enabled: props.can_manage_sessions && props.session.status !== 'ended',
+    gameId: props.game.id,
+    sessionId: props.session.id,
+    onStatus: handleLifecycle,
+});
+
 const submitScene = () => {
     sceneForm.transform((data) => ({
         ...data,
@@ -763,6 +828,7 @@ onMounted(() => {
     if (!window.Echo) return;
     sceneChannel = window.Echo.private(props.scene.channel)
         .listen('.session.scene.updated', refreshScene)
+        .listen('.session.lifecycle.updated', handleLifecycle)
         .listenForWhisper('session-chat', appendChatMessage);
     rollsChannel = window.Echo.private(props.rolls.channel).listen('.session.dice.rolled', refreshRolls);
     inventoryChannel = window.Echo.private(props.inventory.channel).listen('.session.inventory.updated', refreshInventory);
@@ -771,6 +837,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     if (animationTimeout) clearTimeout(animationTimeout);
     if (rollResultTimeout) clearTimeout(rollResultTimeout);
+    if (lifecycleNoticeTimeout) clearTimeout(lifecycleNoticeTimeout);
     rollLogTimeouts.forEach((timeout) => clearTimeout(timeout));
     if (!window.Echo) return;
     if (sceneChannel) window.Echo.leave(props.scene.channel);
@@ -783,6 +850,22 @@ onBeforeUnmount(() => {
     <Head :title="`${session.title} Table`" />
 
     <AuthenticatedLayout>
+        <div
+            v-if="lifecycleNotice"
+            class="fixed left-1/2 top-5 z-[80] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border px-5 py-4 text-sm shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-md"
+            :class="{
+                'border-amber-400/40 bg-amber-500/15 text-amber-50': lifecycleNotice.tone === 'warning',
+                'border-emerald-400/40 bg-emerald-500/15 text-emerald-50': lifecycleNotice.tone === 'success',
+                'border-red-400/40 bg-red-500/15 text-red-50': lifecycleNotice.tone === 'danger',
+            }"
+        >
+            <p class="font-semibold">{{ lifecycleNotice.title }}</p>
+            <p class="mt-1">{{ lifecycleNotice.text }}</p>
+            <p v-if="lifecycleNotice.gm_grace_ends_at" class="mt-1 text-xs opacity-80">
+                Grace до {{ new Date(lifecycleNotice.gm_grace_ends_at).toLocaleTimeString() }}
+            </p>
+        </div>
+
         <template #header>
             <div v-if="can_manage_sessions" class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -1807,4 +1890,3 @@ onBeforeUnmount(() => {
         </Modal>
     </AuthenticatedLayout>
 </template>
-

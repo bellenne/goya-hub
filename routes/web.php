@@ -10,6 +10,7 @@ use App\Http\Controllers\GameItemController;
 use App\Http\Controllers\GameMemberController;
 use App\Http\Controllers\GameNpcController;
 use App\Http\Controllers\GameSessionController;
+use App\Http\Controllers\GameSessionGmPresenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionDiceRollController;
 use App\Http\Controllers\SessionSceneController;
@@ -60,6 +61,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/games/{game}/sessions/{session}', [GameSessionController::class, 'show'])->name('games.sessions.show');
     Route::post('/games/{game}/sessions/{session}/join', [GameSessionController::class, 'join'])->name('games.sessions.join');
     Route::post('/games/{game}/sessions/{session}/start', [GameSessionController::class, 'start'])->name('games.sessions.start');
+    Route::post('/games/{game}/sessions/{session}/gm-presence/connect', [GameSessionGmPresenceController::class, 'connect'])->name('games.sessions.gm-presence.connect');
+    Route::post('/games/{game}/sessions/{session}/gm-presence/heartbeat', [GameSessionGmPresenceController::class, 'heartbeat'])->name('games.sessions.gm-presence.heartbeat');
+    Route::post('/games/{game}/sessions/{session}/gm-presence/disconnect', [GameSessionGmPresenceController::class, 'disconnect'])->name('games.sessions.gm-presence.disconnect');
     Route::patch('/games/{game}/sessions/{session}/scene', [SessionSceneController::class, 'update'])->name('games.sessions.scene.update');
     Route::post('/games/{game}/sessions/{session}/scene-npcs', [SessionSceneController::class, 'storeNpc'])->name('games.sessions.scene-npcs.store');
     Route::patch('/games/{game}/sessions/{session}/scene-npcs/{sceneNpc}', [SessionSceneController::class, 'updateNpc'])->name('games.sessions.scene-npcs.update');
