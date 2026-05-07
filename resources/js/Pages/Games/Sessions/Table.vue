@@ -371,8 +371,22 @@ const rollAttributeText = (roll) => (
 const rollManualModifierText = (roll) => (
     Number(roll.manual_modifier ?? 0) !== 0 ? `Ручной модификатор ${signedNumber(roll.manual_modifier ?? 0)}` : ''
 );
+const rollValuesSum = (roll) => (roll.roll_values ?? []).reduce((sum, value) => sum + Number(value), 0);
+const rollValuesSummaryText = (roll) => {
+    const values = roll.roll_values ?? [];
+
+    if (values.length <= 1) {
+        return values.length === 1 ? `value ${values[0]}` : '';
+    }
+
+    return `sum ${rollValuesSum(roll)} (${values.join(' + ')})`;
+};
 const rollBreakdownText = (roll) => {
     const parts = [`${rollFormulaText(roll)} -> значения: ${roll.roll_values.join(', ')}`];
+
+    if (rollValuesSummaryText(roll)) {
+        parts.push(rollValuesSummaryText(roll));
+    }
 
     if (roll.attribute_label) {
         parts.push(rollAttributeText(roll));
@@ -1396,11 +1410,13 @@ onBeforeUnmount(() => {
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
                         <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
                         <span class="font-semibold text-amber-50">{{ roll.total }}</span>
+                        <span v-if="rollValuesSummaryText(roll)" class="block text-xs text-stone-400">{{ rollValuesSummaryText(roll) }}</span>
                     </article>
                     <article v-for="roll in rolls.items.slice(0, 12)" :key="`hud-full-log-${roll.id}`" class="mb-2 hidden rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:block">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
                         <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
                         <span class="font-semibold text-amber-50">{{ roll.total }}</span>
+                        <span v-if="rollValuesSummaryText(roll)" class="block text-xs text-stone-400">{{ rollValuesSummaryText(roll) }}</span>
                     </article>
                     <p v-if="rollLogItems.length === 0 && rolls.items.length === 0" class="text-sm text-stone-400">Бросков пока нет.</p>
                 </div>
@@ -1531,11 +1547,13 @@ onBeforeUnmount(() => {
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
                         <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
                         <span class="font-semibold text-amber-50">{{ roll.total }}</span>
+                        <span v-if="rollValuesSummaryText(roll)" class="block text-xs text-stone-400">{{ rollValuesSummaryText(roll) }}</span>
                     </article>
                     <article v-for="roll in rolls.items.slice(0, 12)" :key="`gm-hud-full-log-${roll.id}`" class="mb-2 hidden rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:block">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
                         <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
                         <span class="font-semibold text-amber-50">{{ roll.total }}</span>
+                        <span v-if="rollValuesSummaryText(roll)" class="block text-xs text-stone-400">{{ rollValuesSummaryText(roll) }}</span>
                     </article>
                     <p v-if="rollLogItems.length === 0 && rolls.items.length === 0" class="text-sm text-stone-400">Бросков пока нет.</p>
                 </div>

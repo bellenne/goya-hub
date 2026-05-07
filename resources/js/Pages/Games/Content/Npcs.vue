@@ -22,6 +22,7 @@ const props = defineProps({
 const page = usePage();
 const deleteModalNpc = ref(null);
 const avatarInputKey = ref(0);
+const search = ref('');
 const normalizeBoolean = (value, fallback = false) => {
     if (value === null || value === undefined || value === '') {
         return fallback;
@@ -82,6 +83,15 @@ const activeNpcId = ref(props.selectedNpc?.id ?? null);
 
 const activeNpc = computed(() => props.npcs.find((npc) => npc.id === activeNpcId.value) ?? null);
 const isEditing = computed(() => activeNpc.value !== null);
+const filteredNpcs = computed(() => {
+    const query = search.value.trim().toLowerCase();
+
+    if (!query) {
+        return props.npcs;
+    }
+
+    return props.npcs.filter((npc) => npc.name.toLowerCase().includes(query));
+});
 const submitLabel = computed(() => {
     if (form.processing) {
         return isEditing.value ? 'Сохраняем...' : 'Создаём...';
@@ -247,14 +257,21 @@ watch(
                                 </div>
                                 <PrimaryButton type="button" @click="startCreate">Создать нового</PrimaryButton>
                             </div>
+                            <div class="mt-5">
+                                <InputLabel for="npc-search" value="Поиск по имени" />
+                                <TextInput id="npc-search" v-model="search" class="mt-2 block w-full" placeholder="Введите имя NPC" />
+                            </div>
 
                             <div v-if="npcs.length === 0" class="mt-5 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
                                 NPC пока не добавлены.
                             </div>
+                            <div v-else-if="filteredNpcs.length === 0" class="mt-5 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
+                                NPC с таким именем не найдены.
+                            </div>
 
                             <div v-else class="mt-5 space-y-4">
                                 <article
-                                    v-for="npc in npcs"
+                                    v-for="npc in filteredNpcs"
                                     :key="npc.id"
                                     class="rounded-[1.4rem] border p-4 transition duration-300"
                                     :class="activeNpc?.id === npc.id

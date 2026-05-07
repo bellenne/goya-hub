@@ -454,29 +454,39 @@ const submit = () => {
                                         </div>
                                     </div>
 
-                                    <div class="mt-4 grid gap-4 lg:grid-cols-[auto_auto_minmax(0,1fr)_7rem_7rem] lg:items-end">
-                                        <label class="flex items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-300 transition hover:bg-white/[0.06]">
+                                    <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)_7rem_7rem] xl:items-end">
+                                        <label class="min-w-0 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-300 transition hover:bg-white/[0.06]">
+                                            <span class="flex min-w-0 items-center gap-2">
                                             <input v-model="field.required" type="checkbox" class="rounded border-amber-300/20 bg-stone-950 text-amber-500" />
-                                            Обязательное поле
+                                            <span class="min-w-0 break-words">Обязательное поле</span>
+                                            </span>
                                         </label>
-                                        <label class="flex items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-300 transition hover:bg-white/[0.06]">
+                                        <label class="min-w-0 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-300 transition hover:bg-white/[0.06]">
+                                            <span class="flex min-w-0 items-center gap-2">
                                             <input
                                                 :checked="field.player_editable === false"
                                                 type="checkbox"
                                                 class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
                                                 @change="field.player_editable = !$event.target.checked"
                                             />
-                                            Запретить игрокам редактирование
+                                            <span class="min-w-0 break-words">Запретить игрокам редактирование</span>
+                                            </span>
                                         </label>
-                                        <div>
+                                        <div class="min-w-0 md:col-span-2 xl:col-span-1">
                                             <InputLabel value="Значение по умолчанию" />
-                                            <TextInput v-model="field.default" class="mt-2 block w-full" />
+                                            <input
+                                                v-if="field.type === 'number'"
+                                                v-model.number="field.default"
+                                                type="number"
+                                                class="fantasy-input mt-2 block w-full"
+                                            />
+                                            <TextInput v-else v-model="field.default" class="mt-2 block w-full" />
                                         </div>
-                                        <div v-if="field.type === 'number'">
+                                        <div v-if="field.type === 'number'" class="min-w-0">
                                             <InputLabel value="Мин." />
                                             <input v-model.number="field.min" type="number" class="fantasy-input mt-2 block w-full" />
                                         </div>
-                                        <div v-if="field.type === 'number'">
+                                        <div v-if="field.type === 'number'" class="min-w-0">
                                             <InputLabel value="Макс." />
                                             <input v-model.number="field.max" type="number" class="fantasy-input mt-2 block w-full" />
                                         </div>

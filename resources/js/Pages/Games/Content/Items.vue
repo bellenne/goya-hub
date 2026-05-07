@@ -19,6 +19,7 @@ const props = defineProps({
 const page = usePage();
 const deleteModalItem = ref(null);
 const imageInputKey = ref(0);
+const search = ref('');
 
 const emptyForm = () => ({
     name: '',
@@ -33,6 +34,15 @@ const activeItemId = ref(props.selectedItem?.id ?? null);
 
 const activeItem = computed(() => props.items.find((item) => item.id === activeItemId.value) ?? null);
 const isEditing = computed(() => activeItem.value !== null);
+const filteredItems = computed(() => {
+    const query = search.value.trim().toLowerCase();
+
+    if (!query) {
+        return props.items;
+    }
+
+    return props.items.filter((item) => item.name.toLowerCase().includes(query));
+});
 const submitLabel = computed(() => {
     if (form.processing) {
         return isEditing.value ? 'Сохраняем...' : 'Создаём...';
@@ -70,7 +80,7 @@ const setImage = (event) => {
 
 const submit = () => {
     if (isEditing.value) {
-        form.patch(route('games.items.update', [props.game.id, activeItem.value.id]), {
+        form.transform((data) => ({ ...data, _method: 'patch' })).post(route('games.items.update', [props.game.id, activeItem.value.id]), {
             forceFormData: true,
             preserveScroll: true,
         });
@@ -78,7 +88,7 @@ const submit = () => {
         return;
     }
 
-    form.post(route('games.items.store', props.game.id), {
+    form.transform((data) => data).post(route('games.items.store', props.game.id), {
         forceFormData: true,
         preserveScroll: true,
     });
@@ -196,14 +206,21 @@ watch(
                                 </div>
                                 <PrimaryButton type="button" @click="startCreate">Создать новый</PrimaryButton>
                             </div>
+                            <div class="mt-5">
+                                <InputLabel for="item-search" value="Поиск по имени" />
+                                <TextInput id="item-search" v-model="search" class="mt-2 block w-full" placeholder="Введите название предмета" />
+                            </div>
 
                             <div v-if="items.length === 0" class="mt-5 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
                                 Предметы пока не добавлены.
                             </div>
+                            <div v-else-if="filteredItems.length === 0" class="mt-5 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
+                                По такому имени предметы не найдены.
+                            </div>
 
                             <div v-else class="mt-5 space-y-4">
                                 <article
-                                    v-for="item in items"
+                                    v-for="item in filteredItems"
                                     :key="item.id"
                                     class="rounded-[1.4rem] border p-4 transition duration-300"
                                     :class="activeItem?.id === item.id
