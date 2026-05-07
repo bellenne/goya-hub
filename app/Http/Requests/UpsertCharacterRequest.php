@@ -29,7 +29,7 @@ class UpsertCharacterRequest extends FormRequest
 
         $rules = [
             'name' => ['required', 'string', 'max:255'],
-            'avatar' => ['nullable', 'image', 'max:2048'],
+            'avatar' => ['nullable', 'image', 'max:51200'],
             'origin' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'attribute_values' => ['required', 'array'],

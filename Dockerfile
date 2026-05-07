@@ -33,6 +33,7 @@ RUN apt-get update \
 
 COPY docker/app/entrypoint.sh /usr/local/bin/app-entrypoint
 COPY docker/app/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/app/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 RUN chmod +x /usr/local/bin/app-entrypoint
 

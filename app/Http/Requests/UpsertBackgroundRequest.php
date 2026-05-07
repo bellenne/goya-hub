@@ -23,7 +23,7 @@ class UpsertBackgroundRequest extends FormRequest
     {
         return [
             'title' => ['required', 'string', 'max:255'],
-            'image' => [$this->route('background') ? 'nullable' : 'required', 'image', 'max:4096'],
+            'image' => [$this->route('background') ? 'nullable' : 'required', 'image', 'max:51200'],
             'back_to_session_id' => ['nullable', 'integer'],
             'apply_to_session' => ['nullable', 'boolean'],
         ];

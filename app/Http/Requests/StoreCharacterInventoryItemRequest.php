@@ -27,7 +27,7 @@ class StoreCharacterInventoryItemRequest extends FormRequest
             'item_id' => ['nullable', 'integer', 'exists:items,id'],
             'custom_name' => ['nullable', 'string', 'max:255'],
             'custom_description' => ['nullable', 'string', 'max:5000'],
-            'custom_image' => ['nullable', 'image', 'max:2048'],
+            'custom_image' => ['nullable', 'image', 'max:51200'],
             'quantity' => ['required', 'integer', 'min:1', 'max:999'],
         ];
     }

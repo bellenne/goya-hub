@@ -94,7 +94,7 @@ class GameNoteController extends Controller
         $this->authorizeNote($request, $game, $note);
 
         $validated = $request->validate([
-            'image' => ['required', 'image', 'max:5120'],
+            'image' => ['required', 'image', 'max:51200'],
         ]);
 
         $file = $validated['image'];
@@ -136,7 +136,7 @@ class GameNoteController extends Controller
 
         $encoded = substr($dataUrl, strlen('data:image/png;base64,'));
         $binary = base64_decode($encoded, true);
-        abort_if($binary === false || strlen($binary) > 2_500_000, 422);
+        abort_if($binary === false || strlen($binary) > 52_428_800, 422);
 
         $path = 'game-notes/sketches/'.Str::uuid().'.png';
         Storage::disk('public')->put($path, $binary);
