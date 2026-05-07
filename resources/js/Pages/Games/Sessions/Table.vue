@@ -1360,7 +1360,7 @@ onBeforeUnmount(() => {
                     </div>
                     <div v-else class="mx-auto grid h-[5.75rem] w-[5.75rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-xl font-semibold text-amber-100">{{ scene.own_character.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ scene.own_character.name }}</p>
-                    <p v-if="isCharacterHidden(scene.own_character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">hidden for players</p>
+                    <p v-if="isCharacterHidden(scene.own_character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">скрыто от игроков</p>
                 </article>
                 <article v-for="teammate in scene.teammates" :key="`hud-party-${teammate.id}`" class="pointer-events-auto rounded-lg border border-stone-600/35 bg-stone-950/50 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('character', teammate.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'character', teammate, true)" @mouseleave="hideContextMenu">
                     <div v-if="teammate.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
@@ -1475,7 +1475,7 @@ onBeforeUnmount(() => {
                     </div>
                     <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ character.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ character.name }}</p>
-                    <p v-if="isCharacterHidden(character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">hidden for players</p></article>
+                    <p v-if="isCharacterHidden(character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">скрыто от игроков</p></article>
                 <article v-for="npc in alliedNpcs" :key="`gm-ally-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-emerald-300/20 bg-stone-900/60 p-1">
                         <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
@@ -1704,8 +1704,8 @@ onBeforeUnmount(() => {
                                         </div>
                                     </div>
                                     <div class="mt-3 flex flex-wrap gap-2">
-                                        <SecondaryButton @click="openCharacterModal('stats')">Stats</SecondaryButton>
-                                        <SecondaryButton @click="openCharacterModal('inventory')">Inventory</SecondaryButton>
+                                        <SecondaryButton @click="openCharacterModal('stats')">Статы</SecondaryButton>
+                                        <SecondaryButton @click="openCharacterModal('inventory')">Инвентарь</SecondaryButton>
                                     </div>
                                 </article>
                                 <p v-else class="fantasy-empty p-4">Персонаж пока не создан.</p>
@@ -1772,8 +1772,8 @@ onBeforeUnmount(() => {
                                                 <p class="text-sm text-stone-400">{{ scene.own_character.user_name }}</p>
                                                 <p v-if="scene.own_character.origin" class="mt-1 text-sm text-stone-300">{{ scene.own_character.origin }}</p>
                                                 <div class="mt-4 flex flex-wrap gap-2">
-                                                    <SecondaryButton @click="openCharacterModal('stats')">Stats</SecondaryButton>
-                                                    <SecondaryButton @click="openCharacterModal('inventory')">Inventory</SecondaryButton>
+                                                    <SecondaryButton @click="openCharacterModal('stats')">Статы</SecondaryButton>
+                                                    <SecondaryButton @click="openCharacterModal('inventory')">Инвентарь</SecondaryButton>
                                                 </div>
                                             </div>
                                         </div>
@@ -1953,8 +1953,8 @@ onBeforeUnmount(() => {
                                         </div>
                                     </div>
                                     <div class="mt-3 flex flex-wrap gap-2">
-                                        <SecondaryButton @click="openCharacterModal('stats', character)">Stats</SecondaryButton>
-                                        <SecondaryButton @click="openCharacterModal('inventory', character)">Inventory</SecondaryButton>
+                                        <SecondaryButton @click="openCharacterModal('stats', character)">Статы</SecondaryButton>
+                                        <SecondaryButton @click="openCharacterModal('inventory', character)">Инвентарь</SecondaryButton>
                                         <SecondaryButton :disabled="sceneForm.processing" @click="setSceneSpeaker('character', character.id)">Speaker</SecondaryButton>
                                     </div>
                                 </article>
@@ -2303,43 +2303,64 @@ onBeforeUnmount(() => {
             </div>
         </Modal>
 
-        <Modal :show="showCharacterModal" max-width="2xl" @close="showCharacterModal = false">
-            <div class="p-6">
-                <div class="flex items-start justify-between gap-4">
-                    <div>
-                        <p class="fantasy-kicker">Character</p>
-                        <h2 class="text-xl font-semibold text-amber-50">{{ activeCharacter?.name }}</h2>
-                        <p v-if="activeCharacter?.origin" class="mt-1 text-sm text-stone-400">{{ activeCharacter.origin }}</p>
+        <Modal :show="showCharacterModal" max-width="fit" @close="showCharacterModal = false">
+            <div class="w-[min(72rem,calc(100vw-2rem))] bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.12),transparent_24rem),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.10),transparent_22rem),rgba(28,25,23,0.98)] p-5 sm:p-6">
+                <div class="flex flex-col gap-5 border-b border-amber-300/15 pb-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="flex min-w-0 gap-4">
+                        <div class="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-amber-300/20 bg-stone-950/70 ring-1 ring-white/5">
+                            <img v-if="activeCharacter?.avatar_url" :src="activeCharacter.avatar_url" :alt="activeCharacter.name" class="h-full w-full object-cover" />
+                            <div v-else class="grid h-full w-full place-items-center text-2xl font-semibold text-amber-100">{{ activeCharacter?.name?.charAt(0) ?? '?' }}</div>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="fantasy-kicker">Персонаж сессии</p>
+                            <h2 class="mt-1 truncate text-2xl font-semibold text-amber-50">{{ activeCharacter?.name }}</h2>
+                            <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-400">{{ activeCharacter?.origin || 'Происхождение не указано.' }}</p>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                <span class="fantasy-chip-muted">Характеристик: {{ templateItems('attributes').length }}</span>
+                                <span class="fantasy-chip-muted">Навыков: {{ skillTemplateItems.length }}</span>
+                                <span class="fantasy-chip-muted">Предметов: {{ activeCharacterInventory.length }}</span>
+                            </div>
+                        </div>
                     </div>
-                    <SecondaryButton @click="showCharacterModal = false">Close</SecondaryButton>
+                    <SecondaryButton @click="showCharacterModal = false">Закрыть</SecondaryButton>
                 </div>
 
-                <div class="mt-6 flex gap-2">
-                    <button type="button" class="rounded-md px-4 py-2 text-sm font-semibold" :class="characterModalTab === 'stats' ? 'bg-amber-500 text-stone-950' : 'bg-stone-950 text-stone-300'" @click="characterModalTab = 'stats'">
-                        Stats
+                <div class="mt-5 inline-flex rounded-lg border border-stone-600/40 bg-stone-950/70 p-1">
+                    <button
+                        type="button"
+                        class="rounded-md px-4 py-2 text-sm font-semibold transition"
+                        :class="characterModalTab === 'stats' ? 'bg-amber-500 text-stone-950 shadow-[0_10px_24px_rgba(245,158,11,0.18)]' : 'text-stone-300 hover:bg-white/[0.06] hover:text-amber-50'"
+                        @click="characterModalTab = 'stats'"
+                    >
+                        Статы
                     </button>
-                    <button type="button" class="rounded-md px-4 py-2 text-sm font-semibold" :class="characterModalTab === 'inventory' ? 'bg-amber-500 text-stone-950' : 'bg-stone-950 text-stone-300'" @click="characterModalTab = 'inventory'">
-                        Inventory
+                    <button
+                        type="button"
+                        class="rounded-md px-4 py-2 text-sm font-semibold transition"
+                        :class="characterModalTab === 'inventory' ? 'bg-amber-500 text-stone-950 shadow-[0_10px_24px_rgba(245,158,11,0.18)]' : 'text-stone-300 hover:bg-white/[0.06] hover:text-amber-50'"
+                        @click="characterModalTab = 'inventory'"
+                    >
+                        Инвентарь
                     </button>
                 </div>
 
-                <form v-if="characterModalTab === 'stats' && can_manage_sessions" class="mt-6 space-y-6" @submit.prevent="updateGmCharacterSheet">
-                    <section>
+                <form v-if="characterModalTab === 'stats' && can_manage_sessions" class="mt-6 max-h-[72vh] space-y-6 overflow-y-auto pr-1" @submit.prevent="updateGmCharacterSheet">
+                    <section class="fantasy-panel p-5">
                         <div class="flex flex-wrap items-center justify-between gap-3">
-                            <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Attributes</h3>
+                            <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Характеристики</h3>
                             <div class="text-xs uppercase tracking-[0.16em]" :class="gmAttributePointBalance.available < 0 ? 'text-rose-300' : 'text-stone-400'">
-                                Base {{ gmAttributePointBalance.base }} · Returned +{{ gmAttributePointBalance.gained }} · Spent -{{ gmAttributePointBalance.spent }} · Left {{ gmAttributePointBalance.available }}
+                                База {{ gmAttributePointBalance.base }} · Возвращено +{{ gmAttributePointBalance.gained }} · Потрачено -{{ gmAttributePointBalance.spent }} · Осталось {{ gmAttributePointBalance.available }}
                             </div>
                         </div>
                         <div v-if="gmSheetForm.errors.attribute_values" class="mt-3 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
                             {{ gmSheetForm.errors.attribute_values }}
                         </div>
                         <div v-else-if="gmAttributePointBalance.available < 0" class="mt-3 rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-                            Attribute point balance is negative.
+                            Баланс очков характеристик отрицательный.
                         </div>
-                        <div class="mt-3 grid gap-3 sm:grid-cols-3">
-                            <label v-for="item in templateItems('attributes')" :key="`gm-attr-${item.key}`" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
-                                <span class="text-sm text-stone-400">{{ item.label }}</span>
+                        <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            <label v-for="item in templateItems('attributes')" :key="`gm-attr-${item.key}`" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4 transition hover:border-amber-300/25">
+                                <span class="text-sm font-semibold text-amber-50">{{ item.label }}</span>
                                 <input
                                     v-model.number="gmSheetForm.attribute_values[item.key]"
                                     type="number"
@@ -2351,18 +2372,18 @@ onBeforeUnmount(() => {
                                     class="mt-2 block text-[11px] font-semibold uppercase tracking-[0.16em]"
                                     :class="gmAttributeDelta(item) < 0 ? 'text-emerald-300' : gmAttributeDelta(item) > 0 ? 'text-rose-300' : 'text-stone-500'"
                                 >
-                                    <template v-if="gmAttributeDelta(item) < 0">Returned +{{ Math.abs(gmAttributeDelta(item)) }}</template>
-                                    <template v-else-if="gmAttributeDelta(item) > 0">Spent -{{ gmAttributeDelta(item) }}</template>
-                                    <template v-else>Base</template>
+                                    <template v-if="gmAttributeDelta(item) < 0">Возвращает +{{ Math.abs(gmAttributeDelta(item)) }}</template>
+                                    <template v-else-if="gmAttributeDelta(item) > 0">Тратит -{{ gmAttributeDelta(item) }}</template>
+                                    <template v-else>Базовое значение</template>
                                 </span>
                             </label>
                         </div>
                     </section>
-                    <section>
-                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Skills</h3>
-                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                            <label v-for="item in skillTemplateItems" :key="`gm-skill-${item.key}`" class="flex items-center justify-between gap-3 rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
-                                <span class="text-sm text-stone-400">{{ item.label }}</span>
+                    <section class="fantasy-panel p-5">
+                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Навыки</h3>
+                        <div class="mt-4 grid gap-3 md:grid-cols-2">
+                            <label v-for="item in skillTemplateItems" :key="`gm-skill-${item.key}`" class="flex items-center justify-between gap-3 rounded-lg border border-stone-600/40 bg-stone-950/60 p-4 transition hover:border-teal-300/25">
+                                <span class="text-sm font-semibold text-stone-200">{{ item.label }}</span>
                                 <span class="inline-flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-stone-200">
                                     <input v-model="gmSheetForm.skill_values[item.key]" type="checkbox" class="peer sr-only" />
                                     <span class="relative h-6 w-11 rounded-full bg-stone-700/80 transition after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:bg-teal-500/70 peer-checked:after:translate-x-5" />
@@ -2371,90 +2392,122 @@ onBeforeUnmount(() => {
                             </label>
                         </div>
                     </section>
-                    <section v-if="extraTemplateItems.length">
-                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Details</h3>
-                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                    <section v-if="extraTemplateItems.length" class="fantasy-panel p-5">
+                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Дополнительные поля</h3>
+                        <div class="mt-4 grid gap-3 md:grid-cols-2">
                             <label v-for="item in extraTemplateItems" :key="`gm-extra-${item.key}`" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
-                                <span class="text-sm text-stone-400">{{ item.label }}</span>
-                                <input v-model="gmSheetForm.extra_field_values[item.key]" :type="item.type === 'number' ? 'number' : 'text'" class="fantasy-input mt-2 block w-full" />
+                                <span class="text-sm font-semibold text-stone-200">{{ item.label }}</span>
+                                <textarea
+                                    v-if="item.type === 'textarea'"
+                                    v-model="gmSheetForm.extra_field_values[item.key]"
+                                    class="fantasy-textarea mt-2 block w-full"
+                                />
+                                <input v-else v-model="gmSheetForm.extra_field_values[item.key]" :type="item.type === 'number' ? 'number' : 'text'" class="fantasy-input mt-2 block w-full" />
                             </label>
                         </div>
                     </section>
-                    <PrimaryButton :disabled="gmSheetForm.processing || gmAttributePointBalance.available < 0">{{ gmSheetForm.processing ? 'Saving...' : 'Save stats' }}</PrimaryButton>
+                    <div class="flex justify-end">
+                        <PrimaryButton :disabled="gmSheetForm.processing || gmAttributePointBalance.available < 0">{{ gmSheetForm.processing ? 'Сохраняем...' : 'Сохранить статы' }}</PrimaryButton>
+                    </div>
                 </form>
 
-                <div v-else-if="characterModalTab === 'stats'" class="mt-6 space-y-6">
-                    <section>
-                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Attributes</h3>
-                        <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                <div v-else-if="characterModalTab === 'stats'" class="mt-6 max-h-[72vh] space-y-6 overflow-y-auto pr-1">
+                    <section class="fantasy-panel p-5">
+                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Характеристики</h3>
+                        <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <div v-for="item in templateItems('attributes')" :key="item.key" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
                                 <p class="text-sm text-stone-400">{{ item.label }}</p>
-                                <p class="mt-1 text-2xl font-semibold text-amber-50">{{ characterValue(activeCharacter?.attribute_values, item) }}</p>
+                                <p class="mt-2 text-3xl font-semibold text-amber-50">{{ characterValue(activeCharacter?.attribute_values, item) }}</p>
                             </div>
                         </div>
                     </section>
 
-                    <section>
-                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Skills</h3>
-                        <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                    <section class="fantasy-panel p-5">
+                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Навыки</h3>
+                        <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <div v-for="item in skillTemplateItems" :key="item.key" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
                                 <p class="text-sm text-stone-400">{{ item.label }}</p>
-                                <p class="mt-1 text-2xl font-semibold text-amber-50">{{ skillValue(activeCharacter?.skill_values, item) }}</p>
+                                <p class="mt-2 text-xl font-semibold text-amber-50">{{ skillValue(activeCharacter?.skill_values, item) }}</p>
                             </div>
                         </div>
                     </section>
 
-                    <section v-if="extraTemplateItems.length">
-                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Details</h3>
-                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                    <section v-if="extraTemplateItems.length" class="fantasy-panel p-5">
+                        <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Дополнительные поля</h3>
+                        <div class="mt-4 grid gap-3 md:grid-cols-2">
                             <div v-for="item in extraTemplateItems" :key="item.key" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
                                 <p class="text-sm text-stone-400">{{ item.label }}</p>
-                                <p class="mt-1 text-sm text-amber-50">{{ characterValue(activeCharacter?.extra_field_values, item) || '-' }}</p>
+                                <p class="mt-2 whitespace-pre-line text-sm leading-6 text-amber-50">{{ characterValue(activeCharacter?.extra_field_values, item) || '-' }}</p>
                             </div>
                         </div>
                     </section>
                 </div>
 
-                <div v-else class="mt-6">
-                    <div v-if="can_manage_sessions && activeCharacter" class="mb-6 space-y-4 rounded-lg border border-amber-300/15 bg-stone-950/45 p-4">
-                        <form class="grid gap-3 sm:grid-cols-[1fr_7rem_auto] sm:items-end" @submit.prevent="submitCatalogItem(activeCharacter.id)">
-                            <div>
-                                <InputLabel :for="`modal-catalog-${activeCharacter.id}`" value="Предмет из базы" />
-                                <select :id="`modal-catalog-${activeCharacter.id}`" v-model="inventoryForms[activeCharacter.id].item_id" class="fantasy-select mt-2 block w-full">
-                                    <option value="">Выберите предмет</option>
-                                    <option v-for="item in inventory.catalog_items" :key="item.id" :value="item.id">{{ item.name }}{{ item.category ? ` (${item.category})` : '' }}</option>
-                                </select>
-                            </div>
-                            <input v-model.number="inventoryForms[activeCharacter.id].quantity" type="number" min="1" class="fantasy-input" />
-                            <PrimaryButton :disabled="inventoryForms[activeCharacter.id].processing">Добавить</PrimaryButton>
-                        </form>
-
-                        <details class="rounded-lg border border-stone-600/40 bg-stone-950/50 p-4">
-                            <summary class="cursor-pointer text-sm font-semibold text-amber-50">Кастомный предмет</summary>
-                            <form class="mt-4 space-y-3" @submit.prevent="submitCustomItem(activeCharacter.id)">
-                                <TextInput v-model="customInventoryForms[activeCharacter.id].custom_name" class="block w-full" placeholder="Название" />
-                                <textarea v-model="customInventoryForms[activeCharacter.id].custom_description" class="fantasy-textarea block w-full" placeholder="Описание" />
-                                <input type="file" accept="image/*" class="fantasy-file block w-full" @change="setCustomImage(activeCharacter.id, $event)" />
-                                <input v-model.number="customInventoryForms[activeCharacter.id].quantity" type="number" min="1" class="fantasy-input block w-32" />
-                                <PrimaryButton :disabled="customInventoryForms[activeCharacter.id].processing">Добавить кастомный</PrimaryButton>
-                            </form>
-                        </details>
-                    </div>
-
-                    <div v-if="activeCharacterInventory.length" class="grid gap-3 sm:grid-cols-2">
-                        <article v-for="item in activeCharacterInventory" :key="item.id" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
-                            <div class="flex gap-4">
-                                <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="h-14 w-14 rounded-lg object-cover" />
-                                <div class="min-w-0 flex-1">
-                                    <p class="font-medium text-amber-50">{{ item.name }}</p>
-                                    <p class="mt-1 text-sm text-stone-400">Qty: {{ item.quantity }}</p>
-                                    <p v-if="item.description" class="mt-2 text-sm text-stone-300">{{ item.description }}</p>
+                <div v-else class="mt-6 max-h-[72vh] space-y-6 overflow-y-auto pr-1">
+                    <section v-if="can_manage_sessions && activeCharacter" class="grid gap-4 lg:grid-cols-2">
+                        <form class="fantasy-panel p-5" @submit.prevent="submitCatalogItem(activeCharacter.id)">
+                            <p class="fantasy-kicker">Каталог</p>
+                            <h3 class="mt-2 text-xl font-semibold text-amber-50">Выдать предмет</h3>
+                            <div class="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-end">
+                                <div>
+                                    <InputLabel :for="`modal-catalog-${activeCharacter.id}`" value="Предмет из базы" />
+                                    <select :id="`modal-catalog-${activeCharacter.id}`" v-model="inventoryForms[activeCharacter.id].item_id" class="fantasy-select mt-2 block w-full">
+                                        <option value="">Выберите предмет</option>
+                                        <option v-for="item in inventory.catalog_items" :key="item.id" :value="item.id">{{ item.name }}{{ item.category ? ` (${item.category})` : '' }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <InputLabel value="Кол-во" />
+                                    <input v-model.number="inventoryForms[activeCharacter.id].quantity" type="number" min="1" class="fantasy-input mt-2 block w-full" />
                                 </div>
                             </div>
-                            <div v-if="can_manage_sessions && activeCharacter" class="mt-4 flex items-center gap-2">
+                            <PrimaryButton class="mt-4" :disabled="inventoryForms[activeCharacter.id].processing">Добавить</PrimaryButton>
+                        </form>
+
+                        <form class="fantasy-panel p-5" @submit.prevent="submitCustomItem(activeCharacter.id)">
+                            <p class="fantasy-kicker">Свободный предмет</p>
+                            <h3 class="mt-2 text-xl font-semibold text-amber-50">Создать и выдать</h3>
+                            <div class="mt-5 space-y-3">
+                                <TextInput v-model="customInventoryForms[activeCharacter.id].custom_name" class="block w-full" placeholder="Название" />
+                                <textarea v-model="customInventoryForms[activeCharacter.id].custom_description" class="fantasy-textarea block w-full" placeholder="Описание" />
+                                <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-end">
+                                    <input type="file" accept="image/*" class="fantasy-file block w-full" @change="setCustomImage(activeCharacter.id, $event)" />
+                                    <input v-model.number="customInventoryForms[activeCharacter.id].quantity" type="number" min="1" class="fantasy-input block w-full" />
+                                </div>
+                            </div>
+                            <PrimaryButton class="mt-4" :disabled="customInventoryForms[activeCharacter.id].processing">Добавить кастомный</PrimaryButton>
+                        </form>
+                    </section>
+
+                    <section>
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p class="fantasy-kicker">Инвентарь</p>
+                                <h3 class="mt-2 text-xl font-semibold text-amber-50">Предметы персонажа</h3>
+                            </div>
+                            <span class="fantasy-chip-muted">{{ activeCharacterInventory.length }} шт.</span>
+                        </div>
+
+                    <div v-if="activeCharacterInventory.length" class="mt-5 grid gap-4 md:grid-cols-2">
+                        <article v-for="item in activeCharacterInventory" :key="item.id" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4 transition hover:border-amber-300/25">
+                            <div class="flex gap-4">
+                                <div class="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-stone-900/80">
+                                    <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="h-full w-full object-cover" />
+                                    <div v-else class="grid h-full w-full place-items-center text-xs uppercase tracking-[0.18em] text-stone-500">Предмет</div>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <p class="min-w-0 truncate font-semibold text-amber-50">{{ item.name }}</p>
+                                        <span class="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-100">x{{ item.quantity }}</span>
+                                    </div>
+                                    <p v-if="item.description" class="mt-2 line-clamp-3 text-sm leading-6 text-stone-300">{{ item.description }}</p>
+                                    <p v-else class="mt-2 text-sm text-stone-500">Без описания.</p>
+                                </div>
+                            </div>
+                            <div v-if="can_manage_sessions && activeCharacter" class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stone-700/50 pt-4">
                                 <form class="flex items-center gap-2" @submit.prevent="updateInventoryQuantity(activeCharacter.id, item.id)">
-                                    <input v-if="quantityForms[item.id]" v-model.number="quantityForms[item.id].quantity" type="number" min="1" class="fantasy-input w-20" />
-                                    <PrimaryButton v-if="quantityForms[item.id]" :disabled="quantityForms[item.id].processing">Qty</PrimaryButton>
+                                    <input v-if="quantityForms[item.id]" v-model.number="quantityForms[item.id].quantity" type="number" min="1" class="fantasy-input w-24" />
+                                    <PrimaryButton v-if="quantityForms[item.id]" :disabled="quantityForms[item.id].processing">Кол-во</PrimaryButton>
                                 </form>
                                 <form @submit.prevent="removeInventoryItem(activeCharacter.id, item.id)">
                                     <DangerButton>Удалить</DangerButton>
@@ -2462,7 +2515,8 @@ onBeforeUnmount(() => {
                             </div>
                         </article>
                     </div>
-                    <p v-else class="text-sm text-stone-400">Inventory is empty.</p>
+                    <p v-else class="mt-5 rounded-lg border border-dashed border-stone-700/60 bg-stone-950/45 px-4 py-5 text-sm text-stone-400">Инвентарь пуст.</p>
+                    </section>
                 </div>
             </div>
         </Modal>
