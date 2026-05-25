@@ -23,6 +23,19 @@ Broadcast::channel('session.lobby.{sessionId}', function ($user, int $sessionId)
     ];
 });
 
+Broadcast::channel('session.cursors.{sessionId}', function ($user, int $sessionId) {
+    $session = GameSession::query()->with('game.members')->find($sessionId);
+
+    if ($session === null || ! $session->game->members->contains('user_id', $user->id)) {
+        return false;
+    }
+
+    return [
+        'id' => $user->id,
+        'name' => $user->name,
+    ];
+});
+
 Broadcast::channel('session.scene.{sessionId}', function ($user, int $sessionId) {
     $session = GameSession::query()->with('game.members')->find($sessionId);
 

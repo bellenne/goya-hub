@@ -60,15 +60,23 @@ const diceOptions = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 let sceneChannel = null;
 let rollsChannel = null;
 let inventoryChannel = null;
+let cursorChannel = null;
 let animationTimeout = null;
 let contextMenuTimeout = null;
 let lifecycleNoticeTimeout = null;
+let cursorCleanupInterval = null;
+let cursorHeartbeatInterval = null;
+let lastCursorBroadcastAt = 0;
+let lastCursorPayload = null;
+let isCursorVisibleToOthers = false;
 const rollLogTimeouts = new Map();
 const npcSpawnEffectTimeouts = new Set();
 const animatedRollIds = new Set();
 const MUSIC_VOLUME_KEY = `goy-table.session.${props.session.id}.music.volume`;
 const MUSIC_MUTED_KEY = `goy-table.session.${props.session.id}.music.muted`;
 const MUSIC_COLLAPSED_KEY = `goy-table.session.${props.session.id}.music.collapsed`;
+const CURSOR_BROADCAST_INTERVAL_MS = 45;
+const CURSOR_STALE_MS = 3500;
 
 const NPC_SPAWN_HOLD_MS = Math.max(
     1000,
@@ -163,6 +171,8 @@ const npcSearch = ref('');
 const hoveredContext = ref(null);
 const showImagePreviewModal = ref(false);
 const previewImageEntity = ref(null);
+const isCursorBroadcasting = ref(false);
+const remoteCursors = ref({});
 const chatItems = ref([]);
 const chatMessage = ref('');
 const isChatExpanded = ref(false);
@@ -336,6 +346,189 @@ const selectedRollAttributeLabel = computed(() => {
 });
 const selectedRollAttributes = computed(() => selectedRollActor.value?.rollable_attributes ?? []);
 const currentUser = computed(() => page.props.auth?.user ?? null);
+const remoteCursorList = computed(() => Object.values(remoteCursors.value));
+const cursorColorFor = (user) => {
+    const rawSeed = Number(user?.id);
+    const seed = Number.isFinite(rawSeed) && rawSeed > 0
+        ? rawSeed
+        : String(user?.name ?? 'user').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const hue = Math.round((seed * 137.508) % 360);
+
+    return `hsl(${hue} 84% 62%)`;
+};
+
+const clampCursorCoordinate = (value) => Math.max(0, Math.min(1, Number(value)));
+
+const removeRemoteCursor = (userId) => {
+    const id = Number(userId);
+
+    if (!id || !remoteCursors.value[id]) {
+        return;
+    }
+
+    const nextCursors = { ...remoteCursors.value };
+    delete nextCursors[id];
+    remoteCursors.value = nextCursors;
+};
+
+const upsertRemoteCursor = (payload) => {
+    const userId = Number(payload?.user_id ?? payload?.id);
+
+    if (!userId || userId === Number(currentUser.value?.id)) {
+        return;
+    }
+
+    const x = clampCursorCoordinate(payload?.x);
+    const y = clampCursorCoordinate(payload?.y);
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return;
+    }
+
+    const userName = String(payload?.user_name ?? payload?.name ?? 'User').slice(0, 48);
+
+    remoteCursors.value = {
+        ...remoteCursors.value,
+        [userId]: {
+            user_id: userId,
+            user_name: userName,
+            x,
+            y,
+            color: payload?.color || cursorColorFor({ id: userId, name: userName }),
+            seen_at: Date.now(),
+        },
+    };
+};
+
+const pruneStaleCursors = () => {
+    const now = Date.now();
+    const activeCursors = Object.fromEntries(
+        Object.entries(remoteCursors.value).filter(([, cursor]) => now - cursor.seen_at <= CURSOR_STALE_MS),
+    );
+
+    if (Object.keys(activeCursors).length !== Object.keys(remoteCursors.value).length) {
+        remoteCursors.value = activeCursors;
+    }
+};
+
+const broadcastCursorLeave = () => {
+    if (!cursorChannel || !currentUser.value) {
+        return;
+    }
+
+    isCursorVisibleToOthers = false;
+    cursorChannel.whisper?.('cursor-leave', {
+        user_id: currentUser.value.id,
+    });
+};
+
+const broadcastCursorPayload = (payload) => {
+    lastCursorPayload = payload;
+    isCursorVisibleToOthers = true;
+    cursorChannel?.whisper?.('cursor-move', payload);
+};
+
+const handleCursorMove = (event) => {
+    if (!isCursorBroadcasting.value || !cursorChannel || !currentUser.value || !window.innerWidth || !window.innerHeight) {
+        return;
+    }
+
+    const now = Date.now();
+
+    if (now - lastCursorBroadcastAt < CURSOR_BROADCAST_INTERVAL_MS) {
+        return;
+    }
+
+    lastCursorBroadcastAt = now;
+
+    broadcastCursorPayload({
+        user_id: currentUser.value.id,
+        user_name: currentUser.value.name,
+        color: cursorColorFor(currentUser.value),
+        x: event.clientX / window.innerWidth,
+        y: event.clientY / window.innerHeight,
+        sent_at: now,
+    });
+};
+
+const enableCursorBroadcast = () => {
+    if (isCursorBroadcasting.value) {
+        return;
+    }
+
+    isCursorBroadcasting.value = true;
+    window.addEventListener('mousemove', handleCursorMove, { passive: true });
+    window.addEventListener('blur', broadcastCursorLeave);
+    document.addEventListener('mouseleave', broadcastCursorLeave);
+    cursorHeartbeatInterval = window.setInterval(() => {
+        if (!isCursorVisibleToOthers || !lastCursorPayload) {
+            return;
+        }
+
+        cursorChannel?.whisper?.('cursor-move', {
+            ...lastCursorPayload,
+            sent_at: Date.now(),
+        });
+    }, 1000);
+};
+
+const disableCursorBroadcast = () => {
+    if (!isCursorBroadcasting.value) {
+        return;
+    }
+
+    broadcastCursorLeave();
+    isCursorBroadcasting.value = false;
+    window.removeEventListener('mousemove', handleCursorMove);
+    window.removeEventListener('blur', broadcastCursorLeave);
+    document.removeEventListener('mouseleave', broadcastCursorLeave);
+    if (cursorHeartbeatInterval) {
+        clearInterval(cursorHeartbeatInterval);
+        cursorHeartbeatInterval = null;
+    }
+
+    lastCursorPayload = null;
+    isCursorVisibleToOthers = false;
+};
+
+const toggleCursorBroadcast = () => {
+    if (isCursorBroadcasting.value) {
+        disableCursorBroadcast();
+        return;
+    }
+
+    enableCursorBroadcast();
+};
+
+const connectCursorChannel = () => {
+    if (!window.Echo || !props.session.cursor_channel) {
+        return;
+    }
+
+    cursorChannel = window.Echo.join(props.session.cursor_channel)
+        .leaving((user) => removeRemoteCursor(user.id))
+        .listenForWhisper('cursor-move', upsertRemoteCursor)
+        .listenForWhisper('cursor-leave', (payload) => removeRemoteCursor(payload?.user_id ?? payload?.id));
+
+    cursorCleanupInterval = window.setInterval(pruneStaleCursors, 1000);
+};
+
+const disconnectCursorChannel = () => {
+    disableCursorBroadcast();
+
+    if (cursorCleanupInterval) {
+        clearInterval(cursorCleanupInterval);
+        cursorCleanupInterval = null;
+    }
+
+    remoteCursors.value = {};
+
+    if (window.Echo && cursorChannel) {
+        window.Echo.leave(props.session.cursor_channel);
+        cursorChannel = null;
+    }
+};
+
 const characterValue = (values, item) => values?.[item.key] ?? item.default ?? '';
 const skillValue = (values, item) => normalizeBoolean(values?.[item.key], normalizeBoolean(item.default)) ? 'Есть' : 'Нет';
 const numberIds = (ids) => [...new Set((ids ?? []).map(Number))];
@@ -1280,6 +1473,7 @@ onMounted(() => {
         .listenForWhisper('session-chat', appendChatMessage);
     rollsChannel = window.Echo.private(props.rolls.channel).listen('.session.dice.rolled', refreshRolls);
     inventoryChannel = window.Echo.private(props.inventory.channel).listen('.session.inventory.updated', refreshInventory);
+    connectCursorChannel();
 });
 
 onBeforeUnmount(() => {
@@ -1290,6 +1484,7 @@ onBeforeUnmount(() => {
     npcSpawnEffectQueue.value = [];
     clearDiceRollAnimations();
     rollLogTimeouts.forEach((timeout) => clearTimeout(timeout));
+    disconnectCursorChannel();
     if (!window.Echo) return;
     if (sceneChannel) window.Echo.leave(props.scene.channel);
     if (rollsChannel) window.Echo.leave(props.rolls.channel);
@@ -1316,6 +1511,39 @@ onBeforeUnmount(() => {
                 Grace до {{ new Date(lifecycleNotice.gm_grace_ends_at).toLocaleTimeString() }}
             </p>
         </div>
+
+        <div class="pointer-events-none fixed inset-0 z-[85]">
+            <div
+                v-for="cursor in remoteCursorList"
+                :key="`cursor-${cursor.user_id}`"
+                class="absolute transition-transform duration-75 ease-linear"
+                :style="{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%`, color: cursor.color }"
+            >
+                <div class="relative">
+                    <svg class="drop-shadow-[0_4px_12px_rgba(0,0,0,0.55)]" width="22" height="28" viewBox="0 0 22 28" fill="none" aria-hidden="true">
+                        <path d="M3 2L18.5 17.5H10.2L6.2 26L3 2Z" fill="currentColor" stroke="rgba(12,10,9,0.85)" stroke-width="1.6" stroke-linejoin="round" />
+                    </svg>
+                    <span
+                        class="absolute left-5 top-3 max-w-36 truncate rounded-md border px-2 py-0.5 text-[11px] font-semibold leading-5 text-stone-950 shadow-[0_8px_22px_rgba(0,0,0,0.38)]"
+                        :style="{ backgroundColor: cursor.color, borderColor: cursor.color }"
+                    >
+                        {{ cursor.user_name }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <button
+            type="button"
+            class="fixed left-3 top-3 z-[86] inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition sm:left-6 sm:top-6 sm:px-4 sm:py-3"
+            :class="isCursorBroadcasting ? 'border-emerald-300/40 bg-emerald-400/15 text-emerald-50 hover:border-emerald-200' : 'border-stone-400/30 bg-stone-950/72 text-stone-200 hover:border-amber-200 hover:bg-amber-300/10 hover:text-amber-100'"
+            :aria-pressed="isCursorBroadcasting"
+            :title="isCursorBroadcasting ? 'Отключить трансляцию курсора' : 'Включить трансляцию курсора'"
+            @click="toggleCursorBroadcast"
+        >
+            <span class="h-2.5 w-2.5 rounded-full" :style="{ backgroundColor: cursorColorFor(currentUser) }" />
+            {{ isCursorBroadcasting ? 'Курсор вкл' : 'Курсор выкл' }}
+        </button>
 
         <template #header>
             <div v-if="can_manage_sessions" class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1560,7 +1788,7 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
-        <button type="button" class="fixed left-3 top-3 z-[65] rounded-lg border border-amber-300/30 bg-stone-950/70 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:bottom-24 sm:left-6 sm:top-auto sm:px-6 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="showNotesModal = true">
+        <button type="button" class="fixed left-3 top-16 z-[65] rounded-lg border border-amber-300/30 bg-stone-950/70 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:bottom-24 sm:left-6 sm:top-auto sm:px-6 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="showNotesModal = true">
             Заметки
         </button>
 

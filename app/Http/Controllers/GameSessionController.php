@@ -194,6 +194,7 @@ class GameSessionController extends Controller
             'gm_grace_started_at' => $session->gm_grace_started_at?->toISOString(),
             'gm_grace_ends_at' => $session->gm_grace_ends_at?->toISOString(),
             'presence_channel' => "session.lobby.{$session->id}",
+            'cursor_channel' => "session.cursors.{$session->id}",
             'participants' => $session->participants
                 ->sortBy('joined_at')
                 ->values()
