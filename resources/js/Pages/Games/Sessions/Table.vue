@@ -75,6 +75,8 @@ const animatedRollIds = new Set();
 const MUSIC_VOLUME_KEY = `goy-table.session.${props.session.id}.music.volume`;
 const MUSIC_MUTED_KEY = `goy-table.session.${props.session.id}.music.muted`;
 const MUSIC_COLLAPSED_KEY = `goy-table.session.${props.session.id}.music.collapsed`;
+const MUSIC_MINIMIZED_KEY = `goy-table.session.${props.session.id}.music.minimized`;
+const CHAT_MINIMIZED_KEY = `goy-table.session.${props.session.id}.chat.minimized`;
 const CURSOR_BROADCAST_INTERVAL_MS = 45;
 const CURSOR_STALE_MS = 3500;
 
@@ -92,11 +94,18 @@ const storedMusicVolume = typeof window === 'undefined'
 const storedMusicCollapsed = typeof window === 'undefined'
     ? null
     : window.localStorage?.getItem(MUSIC_COLLAPSED_KEY);
+const storedMusicMinimized = typeof window === 'undefined'
+    ? null
+    : window.localStorage?.getItem(MUSIC_MINIMIZED_KEY);
+const storedChatMinimized = typeof window === 'undefined'
+    ? null
+    : window.localStorage?.getItem(CHAT_MINIMIZED_KEY);
 const defaultMusicExpanded = typeof window === 'undefined' ? true : window.innerWidth >= 768;
 const localMusic = ref(props.scene.music ?? null);
 const musicVolume = ref(Number.isFinite(storedMusicVolume) ? Math.max(0, Math.min(1, storedMusicVolume)) : 0.55);
 const musicMuted = ref(typeof window !== 'undefined' && window.localStorage?.getItem(MUSIC_MUTED_KEY) === '1');
 const isMusicExpanded = ref(storedMusicCollapsed === null ? defaultMusicExpanded : storedMusicCollapsed !== '1');
+const isMusicMinimized = ref(storedMusicMinimized === '1');
 const musicAudio = ref(null);
 const youtubeFrame = ref(null);
 const musicError = ref('');
@@ -176,6 +185,7 @@ const remoteCursors = ref({});
 const chatItems = ref([]);
 const chatMessage = ref('');
 const isChatExpanded = ref(false);
+const isChatMinimized = ref(storedChatMinimized === '1');
 const isChatHovered = ref(false);
 const isChatInputFocused = ref(false);
 const chatScroll = ref(null);
@@ -723,13 +733,18 @@ const sendChatMessage = () => {
     sceneChannel?.whisper?.('session-chat', payload);
     chatMessage.value = '';
     isChatExpanded.value = true;
+    isChatMinimized.value = false;
 };
 
 const handleChatMouseEnter = () => {
+    if (isChatMinimized.value) return;
+
     isChatHovered.value = true;
 };
 
 const handleChatMouseLeave = () => {
+    if (isChatMinimized.value) return;
+
     isChatHovered.value = false;
 
     if (!isChatInputFocused.value) {
@@ -738,6 +753,8 @@ const handleChatMouseLeave = () => {
 };
 
 const handleChatInputFocus = () => {
+    if (isChatMinimized.value) return;
+
     isChatInputFocused.value = true;
     isChatExpanded.value = true;
 };
@@ -748,6 +765,19 @@ const handleChatInputBlur = () => {
     if (!isChatHovered.value) {
         isChatExpanded.value = false;
     }
+};
+
+const minimizeChat = () => {
+    isChatMinimized.value = true;
+    isChatExpanded.value = false;
+    isChatHovered.value = false;
+    isChatInputFocused.value = false;
+};
+
+const restoreChat = () => {
+    isChatMinimized.value = false;
+    isChatExpanded.value = true;
+    scrollChatToBottom();
 };
 
 const openDiceModal = (diceType) => {
@@ -1229,6 +1259,15 @@ const syncMusicPlayback = async () => {
     }
 };
 
+const minimizeMusic = () => {
+    isMusicMinimized.value = true;
+};
+
+const restoreMusic = () => {
+    isMusicMinimized.value = false;
+    nextTick(syncMusicPlayback);
+};
+
 const toggleEncounteredNpc = (npcId) => {
     const encounteredIds = numberIds(sceneForm.encountered_npc_ids);
     const presentIds = numberIds(sceneForm.present_npc_ids);
@@ -1447,6 +1486,20 @@ watch(isMusicExpanded, (expanded) => {
     nextTick(syncMusicPlayback);
 });
 
+watch(isMusicMinimized, (minimized) => {
+    if (typeof window !== 'undefined') {
+        window.localStorage?.setItem(MUSIC_MINIMIZED_KEY, minimized ? '1' : '0');
+    }
+
+    nextTick(syncMusicPlayback);
+});
+
+watch(isChatMinimized, (minimized) => {
+    if (typeof window !== 'undefined') {
+        window.localStorage?.setItem(CHAT_MINIMIZED_KEY, minimized ? '1' : '0');
+    }
+});
+
 watch(availableRollActors, () => {
     applyDefaultRollSource();
 
@@ -1535,14 +1588,14 @@ onBeforeUnmount(() => {
 
         <button
             type="button"
-            class="fixed left-3 top-3 z-[86] inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition sm:left-6 sm:top-6 sm:px-4 sm:py-3"
+            class="fixed left-3 top-3 z-[86] inline-flex h-11 w-11 items-center justify-center gap-2 rounded-lg border text-xs font-semibold uppercase tracking-[0.12em] shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition sm:left-6 sm:top-6 sm:h-auto sm:w-auto sm:px-4 sm:py-3"
             :class="isCursorBroadcasting ? 'border-emerald-300/40 bg-emerald-400/15 text-emerald-50 hover:border-emerald-200' : 'border-stone-400/30 bg-stone-950/72 text-stone-200 hover:border-amber-200 hover:bg-amber-300/10 hover:text-amber-100'"
             :aria-pressed="isCursorBroadcasting"
             :title="isCursorBroadcasting ? 'Отключить трансляцию курсора' : 'Включить трансляцию курсора'"
             @click="toggleCursorBroadcast"
         >
             <span class="h-2.5 w-2.5 rounded-full" :style="{ backgroundColor: cursorColorFor(currentUser) }" />
-            {{ isCursorBroadcasting ? 'Курсор вкл' : 'Курсор выкл' }}
+            <span class="hidden sm:inline">{{ isCursorBroadcasting ? 'Курсор вкл' : 'Курсор выкл' }}</span>
         </button>
 
         <template #header>
@@ -1568,70 +1621,70 @@ onBeforeUnmount(() => {
             <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,rgba(0,0,0,0.12)_38%,rgba(0,0,0,0.68)_100%)]" />
             <div class="absolute inset-0 bg-gradient-to-b from-stone-950/60 via-transparent to-stone-950/82" />
 
-            <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-8 pt-5">
-                <div data-npc-spawn-target="neutral" class="pointer-events-auto flex max-w-5xl gap-3 overflow-hidden rounded-lg border border-amber-300/20 bg-stone-950/45 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                    <article v-for="npc in topEncounteredNpcs" :key="`hud-met-${npc.id}`" class="flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
+            <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-16 pt-3 sm:px-8 sm:pt-5">
+                <div data-npc-spawn-target="neutral" class="pointer-events-auto flex max-w-[calc(100vw-8rem)] gap-2 overflow-x-auto rounded-lg border border-amber-300/20 bg-stone-950/45 px-3 py-2 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md sm:max-w-5xl sm:gap-3 sm:px-4 sm:py-3">
+                    <article v-for="npc in topEncounteredNpcs" :key="`hud-met-${npc.id}`" class="flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-lg border border-stone-600/35 bg-stone-950/45 p-1.5 text-center transition duration-300 sm:w-28 sm:gap-2 sm:p-2" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
                         <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
-                            <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[4.5rem] max-w-[4.5rem] rounded-md object-contain" />
+                            <img :src="npc.avatar_url" :alt="npc.name" class="max-h-12 max-w-12 rounded-md object-contain sm:max-h-[4.5rem] sm:max-w-[4.5rem]" />
                         </div>
-                        <div v-else class="grid h-[4.5rem] w-[4.5rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-sm font-semibold text-amber-100">{{ npc.name?.charAt(0) }}</div>
+                        <div v-else class="grid h-12 w-12 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-sm font-semibold text-amber-100 sm:h-[4.5rem] sm:w-[4.5rem]">{{ npc.name?.charAt(0) }}</div>
                         <p class="line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}</p>
                     </article>
                     <p v-if="topEncounteredNpcs.length === 0" class="px-4 py-3 text-sm text-stone-400">Встреченных NPC пока нет.</p>
                 </div>
             </div>
 
-            <aside data-npc-spawn-target="ally" class="pointer-events-none absolute bottom-32 left-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:left-8 xl:w-36">
-                <article v-if="scene.own_character" class="pointer-events-auto rounded-lg border border-amber-300/25 bg-stone-950/55 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md" :class="[isSpeaking('character', scene.own_character.id) ? 'ring-2 ring-amber-300/70' : '', isCharacterHidden(scene.own_character.id) ? 'opacity-65' : '']" @mouseenter="showContextMenu($event, 'character', scene.own_character, true)" @mouseleave="hideContextMenu">
+            <aside data-npc-spawn-target="ally" class="pointer-events-none absolute bottom-[5.75rem] left-2 right-2 top-auto z-10 flex max-h-24 w-auto flex-row items-end gap-2 overflow-x-auto md:bottom-32 md:left-5 md:right-auto md:top-28 md:max-h-none md:w-32 md:flex-col md:justify-center md:gap-3 md:overflow-visible xl:left-8 xl:w-36">
+                <article v-if="scene.own_character" class="pointer-events-auto w-20 shrink-0 rounded-lg border border-amber-300/25 bg-stone-950/55 p-1.5 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md md:w-auto md:p-2" :class="[isSpeaking('character', scene.own_character.id) ? 'ring-2 ring-amber-300/70' : '', isCharacterHidden(scene.own_character.id) ? 'opacity-65' : '']" @mouseenter="showContextMenu($event, 'character', scene.own_character, true)" @mouseleave="hideContextMenu">
                     <div v-if="scene.own_character.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
-                        <img :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
+                        <img :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="max-h-12 max-w-12 rounded-md object-contain md:max-h-[5.5rem] md:max-w-[5.5rem]" />
                     </div>
-                    <div v-else class="mx-auto grid h-[5.75rem] w-[5.75rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-xl font-semibold text-amber-100">{{ scene.own_character.name?.charAt(0) }}</div>
+                    <div v-else class="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100 md:h-[5.75rem] md:w-[5.75rem] md:text-xl">{{ scene.own_character.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ scene.own_character.name }}</p>
                     <p v-if="isCharacterHidden(scene.own_character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">скрыто от игроков</p>
                 </article>
-                <article v-for="teammate in scene.teammates" :key="`hud-party-${teammate.id}`" class="pointer-events-auto rounded-lg border border-stone-600/35 bg-stone-950/50 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md" :class="isSpeaking('character', teammate.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'character', teammate, true)" @mouseleave="hideContextMenu">
+                <article v-for="teammate in scene.teammates" :key="`hud-party-${teammate.id}`" class="pointer-events-auto w-20 shrink-0 rounded-lg border border-stone-600/35 bg-stone-950/50 p-1.5 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md md:w-auto md:p-2" :class="isSpeaking('character', teammate.id) ? 'ring-2 ring-amber-300/70' : ''" @mouseenter="showContextMenu($event, 'character', teammate, true)" @mouseleave="hideContextMenu">
                     <div v-if="teammate.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
-                        <img :src="teammate.avatar_url" :alt="teammate.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
+                        <img :src="teammate.avatar_url" :alt="teammate.name" class="max-h-12 max-w-12 rounded-md object-contain md:max-h-[5rem] md:max-w-[5rem]" />
                     </div>
-                    <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ teammate.name?.charAt(0) }}</div>
+                    <div v-else class="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100 md:h-[5.25rem] md:w-[5.25rem]">{{ teammate.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ teammate.name }}</p>
                 </article>
-                <article v-for="npc in alliedNpcs" :key="`hud-ally-${npc.id}`" class="pointer-events-auto rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
+                <article v-for="npc in alliedNpcs" :key="`hud-ally-${npc.id}`" class="pointer-events-auto w-20 shrink-0 rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-1.5 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md transition duration-300 md:w-auto md:p-2" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc, true)" @mouseleave="hideContextMenu">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-emerald-300/20 bg-stone-900/60 p-1">
-                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
+                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-12 max-w-12 rounded-md object-contain md:max-h-[5rem] md:max-w-[5rem]" />
                     </div>
-                    <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-emerald-300/20 bg-stone-900 text-lg font-semibold text-emerald-100">{{ npc.name?.charAt(0) }}</div>
+                    <div v-else class="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-emerald-300/20 bg-stone-900 text-lg font-semibold text-emerald-100 md:h-[5.25rem] md:w-[5.25rem]">{{ npc.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}</p>
                 </article>
             </aside>
 
-            <aside data-npc-spawn-target="enemy" class="pointer-events-none absolute bottom-32 right-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:right-8 xl:w-36">
-                <article v-for="npc in enemyNpcs" :key="`hud-enemy-${npc.id}`" class="pointer-events-auto rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'enemy', npc, true)" @mouseleave="hideContextMenu">
+            <aside data-npc-spawn-target="enemy" class="pointer-events-none absolute bottom-auto left-2 right-2 top-[6.75rem] z-10 flex max-h-24 w-auto flex-row items-start gap-2 overflow-x-auto md:bottom-32 md:left-auto md:right-5 md:top-28 md:max-h-none md:w-32 md:flex-col md:justify-center md:gap-3 md:overflow-visible xl:right-8 xl:w-36">
+                <article v-for="npc in enemyNpcs" :key="`hud-enemy-${npc.id}`" class="pointer-events-auto w-20 shrink-0 rounded-lg border border-red-300/30 bg-red-950/35 p-1.5 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md transition duration-300 md:w-auto md:p-2" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'enemy', npc, true)" @mouseleave="hideContextMenu">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-red-300/20 bg-stone-900/60 p-1">
-                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
+                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-12 max-w-12 rounded-md object-contain md:max-h-[5.5rem] md:max-w-[5.5rem]" />
                     </div>
-                    <div v-else class="mx-auto grid h-[5.75rem] w-[5.75rem] place-items-center rounded-lg border border-red-300/20 bg-stone-900 text-xl font-semibold text-red-100">{{ npc.name?.charAt(0) }}</div>
+                    <div v-else class="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-red-300/20 bg-stone-900 text-lg font-semibold text-red-100 md:h-[5.75rem] md:w-[5.75rem] md:text-xl">{{ npc.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}</p>
                 </article>
             </aside>
 
-            <div class="absolute bottom-3 left-3 z-30 flex flex-col gap-2 sm:bottom-6 sm:left-6 sm:flex-row sm:gap-3">
-                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:px-6 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="openCharacterModal('inventory')">
-                    Инвентарь
-                </button>
-                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:px-6 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="openCharacterModal('stats')">
-                    Характеристики
-                </button>
+            <div class="absolute inset-x-2 bottom-2 z-40 flex justify-center sm:bottom-4">
+                <div class="flex max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-1 rounded-lg border border-amber-300/20 bg-stone-950/72 px-2 py-2 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md sm:gap-2 sm:px-4 sm:py-3">
+                    <button type="button" class="rounded-md border border-amber-300/30 bg-stone-900/80 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-100 transition hover:border-amber-200 hover:bg-amber-300/10 sm:px-5 sm:py-3 sm:text-xs" @click="openCharacterModal('stats')">
+                        Персонаж
+                    </button>
+                    <button type="button" class="rounded-md border border-teal-300/25 bg-teal-400/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-teal-100 transition hover:border-teal-200 hover:bg-teal-300/15 sm:px-5 sm:py-3 sm:text-xs" @click="showNotesModal = true">
+                        Заметки
+                    </button>
+                    <div class="mx-1 hidden h-8 w-px bg-amber-300/20 sm:block" />
+                    <button v-for="diceType in diceOptions" :key="`hud-${diceType}`" type="button" class="grid h-9 min-w-9 place-items-center rounded-md border border-stone-500/50 bg-stone-900/80 px-2 text-[11px] font-bold uppercase text-amber-100 transition hover:border-amber-300 hover:bg-amber-300/12 sm:h-12 sm:min-w-12 sm:text-sm" @click="openDiceModal(diceType)">
+                        {{ diceType }}
+                    </button>
+                </div>
             </div>
 
-            <div class="absolute bottom-3 left-1/2 z-30 grid w-[min(22rem,calc(100vw-1rem))] -translate-x-1/2 grid-cols-6 gap-1 rounded-lg border border-amber-300/20 bg-stone-950/55 px-2 py-2 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md sm:bottom-6 sm:flex sm:w-auto sm:gap-2 sm:px-4 sm:py-3">
-                <button v-for="diceType in diceOptions" :key="`hud-${diceType}`" type="button" class="grid h-10 w-full place-items-center rounded-lg border border-stone-500/50 bg-stone-900/70 text-[11px] font-bold uppercase text-amber-100 transition hover:border-amber-300 hover:bg-amber-300/12 sm:h-14 sm:w-14 sm:text-sm" @click="openDiceModal(diceType)">
-                    {{ diceType }}
-                </button>
-            </div>
-
-            <div class="group absolute bottom-20 left-1/2 z-30 w-[min(32rem,calc(100vw-1rem))] -translate-x-1/2 sm:bottom-28">
+            <div class="group absolute bottom-[6.75rem] left-1/2 z-30 hidden w-[min(32rem,calc(100vw-1rem))] -translate-x-1/2 sm:block">
                 <div class="max-h-24 overflow-hidden rounded-lg border border-transparent bg-stone-950/24 p-3 text-sm text-stone-200 backdrop-blur-sm transition group-hover:max-h-72 group-hover:overflow-y-auto group-hover:border-amber-300/20 group-hover:bg-stone-950/66 sm:max-h-28">
                     <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Roll log</p>
                     <article v-for="roll in rollLogItems" :key="`hud-log-${roll.id}`" class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:hidden">
@@ -1657,31 +1710,31 @@ onBeforeUnmount(() => {
             <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,rgba(0,0,0,0.14)_38%,rgba(0,0,0,0.72)_100%)]" />
             <div class="absolute inset-0 bg-gradient-to-b from-stone-950/62 via-transparent to-stone-950/84" />
 
-            <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-8 pt-5">
-                <div data-npc-spawn-target="neutral" class="pointer-events-auto flex max-w-5xl gap-3 overflow-visible rounded-lg border border-amber-300/20 bg-stone-950/45 px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                    <article v-for="npc in topEncounteredNpcs" :key="`gm-met-${npc.id}`" class="group relative flex w-28 flex-col items-center gap-2 rounded-lg border border-stone-600/35 bg-stone-950/45 p-2 text-center transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
+            <div class="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-16 pt-3 sm:px-24 sm:pt-5">
+                <div data-npc-spawn-target="neutral" class="pointer-events-auto flex max-w-[calc(100vw-8rem)] gap-2 overflow-x-auto rounded-lg border border-amber-300/20 bg-stone-950/45 px-3 py-2 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-md sm:max-w-5xl sm:gap-3 sm:overflow-visible sm:px-4 sm:py-3">
+                    <article v-for="npc in topEncounteredNpcs" :key="`gm-met-${npc.id}`" class="group relative flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-lg border border-stone-600/35 bg-stone-950/45 p-1.5 text-center transition duration-300 sm:w-28 sm:gap-2 sm:p-2" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
                         <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
-                            <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[4.5rem] max-w-[4.5rem] rounded-md object-contain" />
+                            <img :src="npc.avatar_url" :alt="npc.name" class="max-h-12 max-w-12 rounded-md object-contain sm:max-h-[4.5rem] sm:max-w-[4.5rem]" />
                         </div>
-                        <div v-else class="grid h-[4.5rem] w-[4.5rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-sm font-semibold text-amber-100">{{ npc.name?.charAt(0) }}</div>
+                        <div v-else class="grid h-12 w-12 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-sm font-semibold text-amber-100 sm:h-[4.5rem] sm:w-[4.5rem]">{{ npc.name?.charAt(0) }}</div>
                         <p class="line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}<span v-if="npc.quantity > 1"> x{{ npc.quantity }}</span></p></article>
                     <p v-if="topEncounteredNpcs.length === 0" class="px-4 py-3 text-sm text-stone-400">Встреченных NPC пока нет.</p>
                 </div>
             </div>
 
-            <div class="absolute right-6 top-6 z-40 flex gap-3">
+            <div class="absolute right-3 top-3 z-40 flex gap-2 sm:right-6 sm:top-6 sm:gap-3">
                 <button
                     v-if="can_manage_sessions"
                     type="button"
-                    class="grid h-14 w-14 place-items-center rounded-lg border border-violet-300/30 bg-stone-950/65 text-2xl text-violet-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-violet-200"
+                    class="grid h-11 w-11 place-items-center rounded-lg border border-violet-300/30 bg-stone-950/65 text-xl text-violet-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-violet-200 sm:h-14 sm:w-14 sm:text-2xl"
                     title="Scene music"
                     @click="showMusicModal = true"
                 >
                     ♪
                 </button>
                 <div class="group relative">
-                    <button type="button" class="grid h-14 w-14 place-items-center rounded-lg border border-amber-300/30 bg-stone-950/65 text-2xl text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200">▣</button>
-                    <div class="absolute right-0 top-full hidden w-80 rounded-lg border border-amber-300/20 bg-stone-950/95 p-4 shadow-2xl group-hover:block">
+                    <button type="button" class="grid h-11 w-11 place-items-center rounded-lg border border-amber-300/30 bg-stone-950/65 text-xl text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 sm:h-14 sm:w-14 sm:text-2xl">▣</button>
+                    <div class="absolute right-0 top-full hidden w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border border-amber-300/20 bg-stone-950/95 p-4 shadow-2xl group-hover:block">
                         <p class="fantasy-kicker">Backgrounds</p>
                         <input v-model="backgroundSearch" type="search" class="fantasy-input mt-3 block w-full" placeholder="Search background" />
                         <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -1696,28 +1749,28 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <aside data-npc-spawn-target="ally" class="pointer-events-none absolute bottom-32 left-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:left-8 xl:w-36">
-                <article v-for="character in inventory.characters" :key="`gm-party-${character.id}`" class="pointer-events-auto group relative rounded-lg border border-amber-300/25 bg-stone-950/55 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md" :class="[isSpeaking('character', character.id) ? 'ring-2 ring-amber-300/70' : '', isCharacterHidden(character.id) ? 'opacity-65' : '']" @mouseenter="showContextMenu($event, 'character', character)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('character', character.id)">
+            <aside data-npc-spawn-target="ally" class="pointer-events-none absolute bottom-[5.75rem] left-2 right-2 top-auto z-10 flex max-h-24 w-auto flex-row items-end gap-2 overflow-x-auto md:bottom-32 md:left-5 md:right-auto md:top-28 md:max-h-none md:w-32 md:flex-col md:justify-center md:gap-3 md:overflow-visible xl:left-8 xl:w-36">
+                <article v-for="character in inventory.characters" :key="`gm-party-${character.id}`" class="pointer-events-auto group relative w-20 shrink-0 rounded-lg border border-amber-300/25 bg-stone-950/55 p-1.5 text-center shadow-[0_18px_50px_rgba(0,0,0,0.38)] backdrop-blur-md md:w-auto md:p-2" :class="[isSpeaking('character', character.id) ? 'ring-2 ring-amber-300/70' : '', isCharacterHidden(character.id) ? 'opacity-65' : '']" @mouseenter="showContextMenu($event, 'character', character)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('character', character.id)">
                     <div v-if="character.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-amber-300/20 bg-stone-900/60 p-1">
-                        <img :src="character.avatar_url" :alt="character.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
+                        <img :src="character.avatar_url" :alt="character.name" class="max-h-12 max-w-12 rounded-md object-contain md:max-h-[5rem] md:max-w-[5rem]" />
                     </div>
-                    <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100">{{ character.name?.charAt(0) }}</div>
+                    <div v-else class="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-amber-300/20 bg-stone-900 text-lg font-semibold text-amber-100 md:h-[5.25rem] md:w-[5.25rem]">{{ character.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ character.name }}</p>
                     <p v-if="isCharacterHidden(character.id)" class="mt-1 text-[10px] uppercase tracking-[0.18em] text-stone-400">скрыто от игроков</p></article>
-                <article v-for="npc in alliedNpcs" :key="`gm-ally-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
+                <article v-for="npc in alliedNpcs" :key="`gm-ally-${npc.id}`" class="pointer-events-auto group relative w-20 shrink-0 rounded-lg border border-emerald-300/30 bg-emerald-950/35 p-1.5 text-center shadow-[0_18px_50px_rgba(0,0,0,0.32)] backdrop-blur-md transition duration-300 md:w-auto md:p-2" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'npc', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-emerald-300/20 bg-stone-900/60 p-1">
-                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5rem] max-w-[5rem] rounded-md object-contain" />
+                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-12 max-w-12 rounded-md object-contain md:max-h-[5rem] md:max-w-[5rem]" />
                     </div>
-                    <div v-else class="mx-auto grid h-[5.25rem] w-[5.25rem] place-items-center rounded-lg border border-emerald-300/20 bg-stone-900 text-lg font-semibold text-emerald-100">{{ npc.name?.charAt(0) }}</div>
+                    <div v-else class="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-emerald-300/20 bg-stone-900 text-lg font-semibold text-emerald-100 md:h-[5.25rem] md:w-[5.25rem]">{{ npc.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}<span v-if="npc.quantity > 1"> x{{ npc.quantity }}</span></p></article>
             </aside>
 
-            <aside data-npc-spawn-target="enemy" class="pointer-events-none absolute bottom-32 right-5 top-28 z-10 flex w-32 flex-col justify-center gap-3 xl:right-8 xl:w-36">
-                <article v-for="npc in enemyNpcs" :key="`gm-enemy-${npc.id}`" class="pointer-events-auto group relative rounded-lg border border-red-300/30 bg-red-950/35 p-2 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md transition duration-300" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'enemy', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
+            <aside data-npc-spawn-target="enemy" class="pointer-events-none absolute bottom-auto left-2 right-2 top-[6.75rem] z-10 flex max-h-24 w-auto flex-row items-start gap-2 overflow-x-auto md:bottom-32 md:left-auto md:right-5 md:top-28 md:max-h-none md:w-32 md:flex-col md:justify-center md:gap-3 md:overflow-visible xl:right-8 xl:w-36">
+                <article v-for="npc in enemyNpcs" :key="`gm-enemy-${npc.id}`" class="pointer-events-auto group relative w-20 shrink-0 rounded-lg border border-red-300/30 bg-red-950/35 p-1.5 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)] backdrop-blur-md transition duration-300 md:w-auto md:p-2" :class="[isSpeaking('npc', npc.npc_id, npc.id) ? 'ring-2 ring-amber-300/70' : '', npcStackVisibilityClass(npc)]" @mouseenter="showContextMenu($event, 'enemy', npc)" @mouseleave="hideContextMenu" @click="setSceneSpeaker('npc', npc.npc_id, npc.id)">
                     <div v-if="npc.avatar_url" class="mx-auto inline-flex items-center justify-center overflow-hidden rounded-lg border border-red-300/20 bg-stone-900/60 p-1">
-                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-[5.5rem] max-w-[5.5rem] rounded-md object-contain" />
+                        <img :src="npc.avatar_url" :alt="npc.name" class="max-h-12 max-w-12 rounded-md object-contain md:max-h-[5.5rem] md:max-w-[5.5rem]" />
                     </div>
-                    <div v-else class="mx-auto grid h-[5.75rem] w-[5.75rem] place-items-center rounded-lg border border-red-300/20 bg-stone-900 text-xl font-semibold text-red-100">{{ npc.name?.charAt(0) }}</div>
+                    <div v-else class="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-red-300/20 bg-stone-900 text-lg font-semibold text-red-100 md:h-[5.75rem] md:w-[5.75rem] md:text-xl">{{ npc.name?.charAt(0) }}</div>
                     <p class="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-amber-50">{{ npc.name }}<span v-if="npc.quantity > 1"> x{{ npc.quantity }}</span></p></article>
             </aside>
 
@@ -1756,19 +1809,22 @@ onBeforeUnmount(() => {
                 </template>
             </div>
 
-            <div class="absolute bottom-3 left-3 z-30 flex gap-2 sm:bottom-6 sm:left-6 sm:gap-3">
-                <button type="button" class="rounded-lg border border-amber-300/30 bg-stone-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:px-8 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="showNpcLibraryModal = true">
-                    NPC
-                </button>
+            <div class="absolute inset-x-2 bottom-2 z-40 flex justify-center sm:bottom-4">
+                <div class="flex max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-1 rounded-lg border border-amber-300/20 bg-stone-950/72 px-2 py-2 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md sm:gap-2 sm:px-4 sm:py-3">
+                    <button type="button" class="rounded-md border border-amber-300/30 bg-stone-900/80 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-100 transition hover:border-amber-200 hover:bg-amber-300/10 sm:px-5 sm:py-3 sm:text-xs" @click="showNpcLibraryModal = true">
+                        NPC
+                    </button>
+                    <button type="button" class="rounded-md border border-teal-300/25 bg-teal-400/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-teal-100 transition hover:border-teal-200 hover:bg-teal-300/15 sm:px-5 sm:py-3 sm:text-xs" @click="showNotesModal = true">
+                        Заметки
+                    </button>
+                    <div class="mx-1 hidden h-8 w-px bg-amber-300/20 sm:block" />
+                    <button v-for="diceType in diceOptions" :key="`gm-hud-${diceType}`" type="button" class="grid h-9 min-w-9 place-items-center rounded-md border border-stone-500/50 bg-stone-900/80 px-2 text-[11px] font-bold uppercase text-amber-100 transition hover:border-amber-300 hover:bg-amber-300/12 sm:h-12 sm:min-w-12 sm:text-sm" @click="openDiceModal(diceType)">
+                        {{ diceType }}
+                    </button>
+                </div>
             </div>
 
-            <div class="absolute bottom-3 left-1/2 z-30 grid w-[min(22rem,calc(100vw-1rem))] -translate-x-1/2 grid-cols-6 gap-1 rounded-lg border border-amber-300/20 bg-stone-950/55 px-2 py-2 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md sm:bottom-6 sm:flex sm:w-auto sm:gap-2 sm:px-4 sm:py-3">
-                <button v-for="diceType in diceOptions" :key="`gm-hud-${diceType}`" type="button" class="grid h-10 w-full place-items-center rounded-lg border border-stone-500/50 bg-stone-900/70 text-[11px] font-bold uppercase text-amber-100 transition hover:border-amber-300 hover:bg-amber-300/12 sm:h-14 sm:w-14 sm:text-sm" @click="openDiceModal(diceType)">
-                    {{ diceType }}
-                </button>
-            </div>
-
-            <div class="group absolute bottom-20 left-1/2 z-30 w-[min(32rem,calc(100vw-1rem))] -translate-x-1/2 sm:bottom-28">
+            <div class="group absolute bottom-[6.75rem] left-1/2 z-30 hidden w-[min(32rem,calc(100vw-1rem))] -translate-x-1/2 sm:block">
                 <div class="max-h-24 overflow-hidden rounded-lg border border-transparent bg-stone-950/24 p-3 text-sm text-stone-200 backdrop-blur-sm transition group-hover:max-h-72 group-hover:overflow-y-auto group-hover:border-amber-300/20 group-hover:bg-stone-950/66 sm:max-h-28">
                     <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Roll log</p>
                     <article v-for="roll in rollLogItems" :key="`gm-hud-log-${roll.id}`" class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:hidden">
@@ -1788,13 +1844,9 @@ onBeforeUnmount(() => {
             </div>
         </div>
 
-        <button type="button" class="fixed left-3 top-16 z-[65] rounded-lg border border-amber-300/30 bg-stone-950/70 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:bottom-24 sm:left-6 sm:top-auto sm:px-6 sm:py-4 sm:text-sm sm:tracking-[0.16em]" @click="showNotesModal = true">
-            Заметки
-        </button>
-
         <aside
-            class="fixed bottom-[10.5rem] right-3 z-[65] rounded-lg border border-violet-300/25 bg-stone-950/82 text-stone-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition-all sm:bottom-6 sm:right-6"
-            :class="isMusicExpanded ? 'w-[min(22rem,calc(100vw-1.5rem))] p-4' : 'w-[min(18rem,calc(100vw-1.5rem))] p-3'"
+            class="fixed right-3 top-16 z-[65] rounded-lg border border-violet-300/25 bg-stone-950/82 text-stone-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition-all sm:bottom-6 sm:right-6 sm:top-auto"
+            :class="isMusicMinimized ? 'h-11 w-11 p-0' : isMusicExpanded ? 'w-[min(16rem,calc(100vw-1.5rem))] p-3 sm:w-[min(22rem,calc(100vw-1.5rem))] sm:p-4' : 'w-[min(13rem,calc(100vw-1.5rem))] p-2.5 sm:w-[min(18rem,calc(100vw-1.5rem))] sm:p-3'"
         >
             <audio
                 v-if="localMusic?.audio_url && (localMusic.source_type === 'uploaded' || localMusic.source_type === 'direct_url')"
@@ -1804,14 +1856,25 @@ onBeforeUnmount(() => {
                 @loadedmetadata="syncMusicPlayback"
             />
             <iframe
-                v-if="isMusicExpanded && localMusic?.source_type === 'youtube' && youtubeEmbedUrl"
+                v-if="localMusic?.source_type === 'youtube' && youtubeEmbedUrl"
                 ref="youtubeFrame"
                 :src="youtubeEmbedUrl"
                 title="YouTube music source"
-                class="mb-3 h-28 w-full rounded-md border border-stone-700/60 bg-black"
+                class="rounded-md border border-stone-700/60 bg-black"
+                :class="isMusicExpanded && !isMusicMinimized ? 'mb-3 h-28 w-full' : 'pointer-events-none absolute h-px w-px opacity-0'"
                 allow="autoplay; encrypted-media"
                 @load="syncMusicPlayback"
             />
+            <button
+                v-if="isMusicMinimized"
+                type="button"
+                class="grid h-full w-full place-items-center rounded-lg text-lg text-violet-100 transition hover:bg-violet-300/10"
+                :title="musicTitle"
+                @click="restoreMusic"
+            >
+                ♪
+            </button>
+            <template v-else>
             <div class="flex items-start justify-between gap-3">
                 <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-violet-300/25 bg-violet-300/10 text-lg text-violet-100 transition hover:border-violet-200" :title="isMusicExpanded ? 'Collapse music' : 'Expand music'" @click="isMusicExpanded = !isMusicExpanded">
                     {{ isMusicExpanded ? '−' : '♪' }}
@@ -1824,6 +1887,14 @@ onBeforeUnmount(() => {
                 <span class="shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]" :class="musicStatusClass">
                     {{ musicStatusLabel }}
                 </span>
+                <button
+                    type="button"
+                    class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-stone-600/50 bg-stone-900/75 text-xs text-stone-200 transition hover:border-violet-300/40 hover:text-violet-100"
+                    title="Свернуть аудио"
+                    @click="minimizeMusic"
+                >
+                    _
+                </button>
             </div>
             <div class="mt-3 flex items-center gap-2 sm:gap-3">
                 <button type="button" class="rounded-md border border-stone-600/50 bg-stone-900/80 px-2.5 py-2 text-xs font-semibold text-stone-200 hover:border-violet-300/40" @click="musicMuted = !musicMuted">
@@ -1835,6 +1906,7 @@ onBeforeUnmount(() => {
                 </button>
             </div>
             <p v-if="musicError" class="mt-3 text-xs leading-5 text-rose-200">{{ musicError }}</p>
+            </template>
         </aside>
 
         <SceneNpcSpawnOverlay :effect="activeNpcSpawnEffect" />
@@ -1865,17 +1937,36 @@ onBeforeUnmount(() => {
         </div>
 
         <div
-            class="fixed bottom-[16.5rem] right-3 transition-all duration-200 sm:bottom-6"
-            :class="isChatExpanded ? 'z-[80] w-[min(48rem,calc(100vw-1.5rem))] sm:right-6 sm:w-[min(48rem,calc(100vw-12rem))]' : 'z-[70] w-[min(20rem,calc(100vw-1.5rem))] sm:right-[25rem] sm:w-80'"
+            class="fixed bottom-[12.25rem] left-3 transition-all duration-200 sm:bottom-6"
+            :class="isChatMinimized ? 'z-[70] w-11' : isChatExpanded ? 'bottom-[5.75rem] right-3 z-[80] sm:right-auto sm:w-[min(48rem,calc(100vw-12rem))]' : 'right-auto z-[70] w-[min(18rem,calc(100vw-1.5rem))] sm:w-80'"
             @mouseenter="handleChatMouseEnter"
             @mouseleave="handleChatMouseLeave"
         >
-            <div class="pointer-events-auto rounded-lg border border-amber-300/20 bg-stone-950/45 p-3 text-sm text-stone-200 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md">
-                <p class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">Чат</p>
+            <button
+                v-if="isChatMinimized"
+                type="button"
+                class="pointer-events-auto grid h-11 w-11 place-items-center rounded-lg border border-amber-300/20 bg-stone-950/72 text-sm font-semibold text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10"
+                title="Открыть чат"
+                @click="restoreChat"
+            >
+                Ч
+            </button>
+            <div v-else class="pointer-events-auto rounded-lg border border-amber-300/20 bg-stone-950/45 p-3 text-sm text-stone-200 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md">
+                <div class="mb-2 flex items-center justify-between gap-2">
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">Чат</p>
+                    <button
+                        type="button"
+                        class="grid h-7 w-7 place-items-center rounded-md border border-stone-600/50 bg-stone-900/75 text-xs text-stone-200 transition hover:border-amber-300/40 hover:text-amber-100"
+                        title="Свернуть чат"
+                        @click="minimizeChat"
+                    >
+                        _
+                    </button>
+                </div>
                 <div
                     ref="chatScroll"
                     class="overflow-y-auto rounded-lg border border-transparent bg-stone-950/20 pr-1 select-text"
-                    :class="isChatExpanded ? 'mb-3 h-64' : 'mb-3 h-24'"
+                    :class="isChatExpanded ? 'mb-3 h-[min(14rem,38vh)] sm:h-64' : 'mb-3 h-16 sm:h-24'"
                 >
                     <article
                         v-for="item in chatItems"

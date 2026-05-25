@@ -23,6 +23,7 @@ const page = usePage();
 const deleteModalNpc = ref(null);
 const avatarInputKey = ref(0);
 const search = ref('');
+const typeFilter = ref('');
 const normalizeBoolean = (value, fallback = false) => {
     if (value === null || value === undefined || value === '') {
         return fallback;
@@ -85,12 +86,14 @@ const activeNpc = computed(() => props.npcs.find((npc) => npc.id === activeNpcId
 const isEditing = computed(() => activeNpc.value !== null);
 const filteredNpcs = computed(() => {
     const query = search.value.trim().toLowerCase();
+    const selectedType = typeFilter.value;
 
-    if (!query) {
-        return props.npcs;
-    }
+    return props.npcs.filter((npc) => {
+        const matchesName = !query || npc.name.toLowerCase().includes(query);
+        const matchesType = !selectedType || npc.type === selectedType;
 
-    return props.npcs.filter((npc) => npc.name.toLowerCase().includes(query));
+        return matchesName && matchesType;
+    });
 });
 const submitLabel = computed(() => {
     if (form.processing) {
@@ -257,16 +260,25 @@ watch(
                                 </div>
                                 <PrimaryButton type="button" @click="startCreate">Создать нового</PrimaryButton>
                             </div>
-                            <div class="mt-5">
-                                <InputLabel for="npc-search" value="Поиск по имени" />
-                                <TextInput id="npc-search" v-model="search" class="mt-2 block w-full" placeholder="Введите имя NPC" />
+                            <div class="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
+                                <div>
+                                    <InputLabel for="npc-search" value="Поиск по имени" />
+                                    <TextInput id="npc-search" v-model="search" class="mt-2 block w-full" placeholder="Введите имя NPC" />
+                                </div>
+                                <div>
+                                    <InputLabel for="npc-type-filter" value="Фильтр по типу" />
+                                    <select id="npc-type-filter" v-model="typeFilter" class="fantasy-select mt-2 block w-full">
+                                        <option value="">Все типы</option>
+                                        <option v-for="type in npcTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <div v-if="npcs.length === 0" class="mt-5 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
                                 NPC пока не добавлены.
                             </div>
                             <div v-else-if="filteredNpcs.length === 0" class="mt-5 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
-                                NPC с таким именем не найдены.
+                                NPC по текущим фильтрам не найдены.
                             </div>
 
                             <div v-else class="mt-5 space-y-4">
