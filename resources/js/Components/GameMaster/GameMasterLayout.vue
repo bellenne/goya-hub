@@ -42,6 +42,10 @@ const sidebarOpen = ref(false);
             />
 
             <main class="gm-main">
+                <section v-if="$slots.header" class="gm-panel gm-page-header">
+                    <slot name="header" />
+                </section>
+
                 <slot />
             </main>
         </div>

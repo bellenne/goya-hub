@@ -194,6 +194,10 @@ const navigation = computed(() => [
         :title="section"
         :subtitle="title"
     >
+        <template v-if="$slots.header" #header>
+            <slot name="header" />
+        </template>
+
         <slot />
     </GameMasterLayout>
 </template>

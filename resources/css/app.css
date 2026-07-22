@@ -680,6 +680,10 @@
         @apply p-5 sm:p-6;
     }
 
+    .gm-page-header {
+        @apply mb-3;
+    }
+
     .gm-panel-dense {
         @apply p-5;
     }
