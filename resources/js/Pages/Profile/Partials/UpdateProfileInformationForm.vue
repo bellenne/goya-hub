@@ -19,7 +19,21 @@ const user = usePage().props.auth.user;
 const form = useForm({
     name: user.name,
     email: user.email,
+    theme_preference: user.theme_preference ?? 'classic',
 });
+
+const themes = [
+    {
+        value: 'classic',
+        title: 'Классическая',
+        description: 'Тёмная фэнтези-панель с деревом, кожей, латунью и пергаментом.',
+    },
+    {
+        value: 'modern',
+        title: 'Современная',
+        description: 'Текущий лаконичный тёмный интерфейс без выраженной декоративной фактуры.',
+    },
+];
 </script>
 
 <template>
@@ -64,7 +78,24 @@ const form = useForm({
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
-            <div v-if="mustVerifyEmail && user.email_verified_at === null" class="rounded-2xl border border-amber-300/20 bg-amber-400/10 px-4 py-4 text-sm text-amber-100">
+            <div>
+                <InputLabel value="Тема интерфейса" />
+                <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label
+                        v-for="theme in themes"
+                        :key="theme.value"
+                        class="theme-choice"
+                        :class="{ 'theme-choice-active': form.theme_preference === theme.value }"
+                    >
+                        <input v-model="form.theme_preference" type="radio" name="theme_preference" :value="theme.value" class="sr-only" />
+                        <span class="theme-choice-title">{{ theme.title }}</span>
+                        <span class="theme-choice-description">{{ theme.description }}</span>
+                    </label>
+                </div>
+                <InputError class="mt-2" :message="form.errors.theme_preference" />
+            </div>
+
+            <div v-if="mustVerifyEmail && user.email_verified_at === null" class="theme-empty text-amber-100">
                 <p>
                     Адрес электронной почты ещё не подтверждён.
                     <Link

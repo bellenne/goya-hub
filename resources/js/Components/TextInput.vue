@@ -1,26 +1,26 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
+import { usePage } from '@inertiajs/vue3';
+import ClassicTextInput from '@/Components/Themes/Classic/TextInput.vue';
+import ModernTextInput from '@/Components/Themes/Modern/TextInput.vue';
 
 const model = defineModel({
     type: String,
     required: true,
 });
 
+const page = usePage();
 const input = ref(null);
 
-onMounted(() => {
-    if (input.value.hasAttribute('autofocus')) {
-        input.value.focus();
-    }
+const component = computed(() => {
+    return (page.props.auth?.user?.theme_preference ?? 'classic') === 'modern'
+        ? ModernTextInput
+        : ClassicTextInput;
 });
 
-defineExpose({ focus: () => input.value.focus() });
+defineExpose({ focus: () => input.value?.focus() });
 </script>
 
 <template>
-    <input
-        class="fantasy-input"
-        v-model="model"
-        ref="input"
-    />
+    <component :is="component" ref="input" v-model="model" v-bind="$attrs" />
 </template>

@@ -1,9 +1,10 @@
 <script setup>
 import { computed } from 'vue';
+import { usePage } from '@inertiajs/vue3';
+import ClassicCheckbox from '@/Components/Themes/Classic/Checkbox.vue';
+import ModernCheckbox from '@/Components/Themes/Modern/Checkbox.vue';
 
-const emit = defineEmits(['update:checked']);
-
-const props = defineProps({
+defineProps({
     checked: {
         type: [Array, Boolean],
         required: true,
@@ -13,22 +14,12 @@ const props = defineProps({
     },
 });
 
-const proxyChecked = computed({
-    get() {
-        return props.checked;
-    },
+const emit = defineEmits(['update:checked']);
 
-    set(val) {
-        emit('update:checked', val);
-    },
-});
+const page = usePage();
+const component = computed(() => (page.props.auth?.user?.theme_preference ?? 'classic') === 'modern' ? ModernCheckbox : ClassicCheckbox);
 </script>
 
 <template>
-    <input
-        type="checkbox"
-        :value="value"
-        v-model="proxyChecked"
-        class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
-    />
+    <component :is="component" :checked="checked" :value="value" v-bind="$attrs" @update:checked="emit('update:checked', $event)" />
 </template>

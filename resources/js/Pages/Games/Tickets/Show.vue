@@ -1,5 +1,5 @@
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import GameThemeLayout from '@/Layouts/GameThemeLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
@@ -41,12 +41,12 @@ const formattedDate = (value) => {
 };
 
 const statusClass = (tone) => ({
-    sky: 'border-sky-300/25 bg-sky-400/10 text-sky-100',
-    amber: 'border-amber-300/25 bg-amber-400/10 text-amber-100',
-    violet: 'border-violet-300/25 bg-violet-400/10 text-violet-100',
-    emerald: 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100',
-    stone: 'border-stone-500/35 bg-stone-700/30 text-stone-200',
-}[tone] ?? 'border-stone-500/35 bg-stone-700/30 text-stone-200');
+    sky: 'gm-badge-warning',
+    amber: 'gm-badge-warning',
+    violet: 'gm-badge-warning',
+    emerald: 'gm-badge-success',
+    stone: 'gm-badge-muted',
+}[tone] ?? 'gm-badge-muted');
 
 const mergeTicketMeta = (ticket) => {
     localTicket.value = {
@@ -114,7 +114,7 @@ const updateStatus = async (event) => {
 <template>
     <Head :title="`${localTicket.title} — тикет`" />
 
-    <AuthenticatedLayout>
+    <GameThemeLayout :game="game" section="Тикет" :title="localTicket.title">
         <template #header>
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
@@ -135,15 +135,15 @@ const updateStatus = async (event) => {
             </div>
         </template>
 
-        <div class="px-4 pb-10 pt-6 sm:px-6 lg:px-8">
+        <div class="theme-page">
             <div class="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[minmax(0,1fr)_23rem]">
-                <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                <section class="theme-panel">
                     <div class="flex flex-wrap items-center justify-between gap-4">
                         <div>
                             <p class="fantasy-kicker">Переписка</p>
-                            <h2 class="mt-2 text-2xl font-semibold text-amber-50">Thread сообщений</h2>
+                            <h2 class="mt-2 text-2xl font-semibold text-amber-50">Переписка по обращению</h2>
                         </div>
-                        <span class="rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em]" :class="statusClass(currentStatus.tone)">
+                        <span class="gm-badge px-4 py-2" :class="statusClass(currentStatus.tone)">
                             {{ currentStatus.label }}
                         </span>
                     </div>
@@ -152,10 +152,10 @@ const updateStatus = async (event) => {
                         <article
                             v-for="message in localTicket.messages"
                             :key="message.id"
-                            class="rounded-[1.35rem] border p-5"
+                            class="theme-card"
                             :class="message.author?.id === currentUserId
                                 ? 'ml-auto max-w-3xl border-amber-300/20 bg-amber-300/10'
-                                : 'mr-auto max-w-3xl border-stone-700/60 bg-stone-900/80'"
+                                : 'mr-auto max-w-3xl'"
                         >
                             <div class="flex flex-wrap items-center justify-between gap-3">
                                 <div>
@@ -167,11 +167,11 @@ const updateStatus = async (event) => {
                         </article>
                     </div>
 
-                    <form class="mt-6 rounded-[1.35rem] border border-stone-700/50 bg-stone-900/80 p-5" @submit.prevent="submitMessage">
+                    <form class="mt-6 theme-card" @submit.prevent="submitMessage">
                         <label class="text-sm font-medium text-stone-300">Новое сообщение</label>
                         <textarea
                             v-model="messageBody"
-                            class="mt-2 block min-h-36 w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-sm leading-6 text-stone-100 shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+                            class="fantasy-textarea mt-2 block min-h-36 w-full"
                             placeholder="Ответьте в тикет..."
                         />
                         <InputError class="mt-2" :message="messageError" />
@@ -184,31 +184,31 @@ const updateStatus = async (event) => {
                 </section>
 
                 <aside class="space-y-6 xl:sticky xl:top-6 xl:self-start">
-                    <section class="rounded-[1.75rem] border border-violet-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                    <section class="theme-panel">
                         <p class="fantasy-kicker">Состояние</p>
                         <h2 class="mt-2 text-2xl font-semibold text-violet-50">Детали тикета</h2>
                         <div class="mt-5 space-y-3 text-sm leading-6 text-stone-300">
-                            <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                            <div class="theme-list-row">
                                 <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Создан</div>
                                 <div class="mt-1 font-semibold text-stone-100">{{ formattedDate(localTicket.created_at) }}</div>
                             </div>
-                            <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                            <div class="theme-list-row">
                                 <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Последнее сообщение</div>
                                 <div class="mt-1 font-semibold text-stone-100">{{ formattedDate(localTicket.last_message_at) || 'Нет данных' }}</div>
                             </div>
-                            <div v-if="localTicket.closed_at" class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                            <div v-if="localTicket.closed_at" class="theme-list-row">
                                 <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Закрыт</div>
                                 <div class="mt-1 font-semibold text-stone-100">{{ formattedDate(localTicket.closed_at) }}</div>
                             </div>
                         </div>
                     </section>
 
-                    <section v-if="can_manage_tickets" class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
-                        <p class="fantasy-kicker">GM controls</p>
+                    <section v-if="can_manage_tickets" class="theme-panel">
+                        <p class="fantasy-kicker">Управление мастера</p>
                         <h2 class="mt-2 text-2xl font-semibold text-amber-50">Статус</h2>
                         <select
                             :value="localTicket.status"
-                            class="mt-5 block w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-sm text-stone-100 shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+                            class="fantasy-select mt-5 block w-full"
                             :disabled="isUpdatingStatus"
                             @change="updateStatus"
                         >
@@ -216,11 +216,11 @@ const updateStatus = async (event) => {
                         </select>
                         <InputError class="mt-2" :message="statusError" />
                         <p class="mt-3 text-xs uppercase tracking-[0.16em] text-stone-500">
-                            {{ isUpdatingStatus ? 'Сохраняем статус...' : 'Статус меняют только GM/co-GM.' }}
+                            {{ isUpdatingStatus ? 'Сохраняем статус...' : 'Статус меняют только мастера игры.' }}
                         </p>
                     </section>
                 </aside>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </GameThemeLayout>
 </template>

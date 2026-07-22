@@ -1,5 +1,5 @@
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import GameThemeLayout from '@/Layouts/GameThemeLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
@@ -58,25 +58,25 @@ const formattedDate = (value) => {
 };
 
 const statusClass = (tone) => ({
-    sky: 'border-sky-300/25 bg-sky-400/10 text-sky-100',
-    amber: 'border-amber-300/25 bg-amber-400/10 text-amber-100',
-    violet: 'border-violet-300/25 bg-violet-400/10 text-violet-100',
-    emerald: 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100',
-    stone: 'border-stone-500/35 bg-stone-700/30 text-stone-200',
-}[tone] ?? 'border-stone-500/35 bg-stone-700/30 text-stone-200');
+    sky: 'gm-badge-warning',
+    amber: 'gm-badge-warning',
+    violet: 'gm-badge-warning',
+    emerald: 'gm-badge-success',
+    stone: 'gm-badge-muted',
+}[tone] ?? 'gm-badge-muted');
 </script>
 
 <template>
     <Head :title="`Тикеты — ${game.name}`" />
 
-    <AuthenticatedLayout>
+    <GameThemeLayout :game="game" section="Тикеты" :title="game.name">
         <template #header>
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <p class="fantasy-kicker">Тикеты</p>
                     <h1 class="fantasy-title text-3xl">{{ game.name }}</h1>
                     <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
-                        {{ can_manage_tickets ? 'Обращения игроков к GM/co-GM по этой игре.' : 'Ваши личные обращения к мастерам этой игры.' }}
+                        {{ can_manage_tickets ? 'Обращения игроков к мастерам этой игры.' : 'Ваши личные обращения к мастерам этой игры.' }}
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-3">
@@ -87,9 +87,9 @@ const statusClass = (tone) => ({
             </div>
         </template>
 
-        <div class="px-4 pb-10 pt-6 sm:px-6 lg:px-8">
-            <div class="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-                <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+        <div class="theme-page">
+            <div class="theme-grid theme-grid-main">
+                <section class="theme-panel">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div>
                             <p class="fantasy-kicker">Список</p>
@@ -97,29 +97,29 @@ const statusClass = (tone) => ({
                         </div>
                         <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] lg:w-[32rem]">
                             <TextInput v-model="search" placeholder="Поиск по заголовку, автору или тексту" />
-                            <select v-model="statusFilter" class="rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-sm text-stone-100 shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30">
+                            <select v-model="statusFilter" class="fantasy-select block w-full">
                                 <option value="">Все статусы</option>
                                 <option v-for="status in statuses" :key="status.value" :value="status.value">{{ status.label }}</option>
                             </select>
                         </div>
                     </div>
 
-                    <div v-if="page.props.flash.success" class="mt-5 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+                    <div v-if="page.props.flash.success" class="gm-alert gm-alert-success mt-5">
                         {{ page.props.flash.success }}
                     </div>
 
-                    <div v-if="filteredTickets.length === 0" class="mt-6 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-8 text-center text-sm text-stone-500">
+                    <div v-if="filteredTickets.length === 0" class="mt-6 theme-empty text-center">
                         Тикетов по текущим условиям нет.
                     </div>
 
                     <div v-else class="mt-6 space-y-4">
                         <Link v-for="ticket in filteredTickets" :key="ticket.id" :href="route('games.tickets.show', [game.id, ticket.id])">
-                            <article class="rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-amber-300/25 hover:shadow-[0_0_40px_rgba(251,191,36,0.08)]">
+                            <article class="theme-card theme-card-interactive">
                                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                     <div class="min-w-0">
                                         <div class="flex flex-wrap items-center gap-3">
                                             <h3 class="truncate text-lg font-semibold text-amber-50">{{ ticket.title }}</h3>
-                                            <span class="rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]" :class="statusClass(statusByValue[ticket.status]?.tone)">
+                                            <span class="gm-badge" :class="statusClass(statusByValue[ticket.status]?.tone)">
                                                 {{ ticket.status_label }}
                                             </span>
                                         </div>
@@ -137,9 +137,9 @@ const statusClass = (tone) => ({
                 </section>
 
                 <aside class="space-y-6 xl:sticky xl:top-6 xl:self-start">
-                    <section class="rounded-[1.75rem] border border-violet-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                    <section class="theme-panel">
                         <p class="fantasy-kicker">Новый тикет</p>
-                        <h2 class="mt-2 text-2xl font-semibold text-violet-50">Обращение к GM</h2>
+                        <h2 class="mt-2 text-2xl font-semibold text-violet-50">Обращение к мастеру</h2>
                         <form class="mt-5 space-y-4" @submit.prevent="submit">
                             <div>
                                 <label class="text-sm font-medium text-stone-300">Заголовок</label>
@@ -150,7 +150,7 @@ const statusClass = (tone) => ({
                                 <label class="text-sm font-medium text-stone-300">Первое сообщение</label>
                                 <textarea
                                     v-model="form.body"
-                                    class="mt-2 block min-h-44 w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-sm leading-6 text-stone-100 shadow-sm transition focus:border-violet-300/60 focus:outline-none focus:ring-2 focus:ring-violet-300/30"
+                                    class="fantasy-textarea mt-2 block min-h-44 w-full"
                                 />
                                 <InputError class="mt-2" :message="form.errors.body" />
                             </div>
@@ -162,5 +162,5 @@ const statusClass = (tone) => ({
                 </aside>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </GameThemeLayout>
 </template>

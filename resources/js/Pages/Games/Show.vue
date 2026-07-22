@@ -1,6 +1,8 @@
-﻿<script setup>
+<script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import InputError from '@/Components/InputError.vue';
+import FantasyBadge from '@/Components/Fantasy/FantasyBadge.vue';
+import FantasyButton from '@/Components/Fantasy/FantasyButton.vue';
+import GameMasterLayout from '@/Components/GameMaster/GameMasterLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
@@ -15,105 +17,149 @@ const props = defineProps({
 
 const page = usePage();
 const inviteForm = useForm({});
-const memberRoleForms = {};
 const copiedInvite = ref(false);
 
-const roleOptions = [
-    { value: 'player', label: 'Игрок' },
-    { value: 'co_gm', label: 'Со-ГМ' },
-];
-
+const dashboard = computed(() => props.game.dashboard ?? {});
+const summary = computed(() => dashboard.value.summary ?? {});
+const isModernTheme = computed(() => (page.props.auth?.user?.theme_preference ?? 'classic') === 'modern');
 const activeInviteLink = computed(() => page.props.flash.invite_link || props.game.invite_link);
 const playerCount = computed(() => props.game.members.filter((member) => member.role === 'player').length);
-const managementCount = computed(() => props.game.members.filter((member) => member.role !== 'player').length);
-const quickLinks = computed(() => {
-    const links = [];
-
-    if (props.game.can_edit_character) {
-        links.push({
-            label: props.game.current_user_character_id ? 'Редактировать персонажа' : 'Создать персонажа',
-            description: props.game.current_user_character_id
-                ? 'Откройте свой лист и обновите характеристики, навыки и заметки.'
-                : 'Подготовьте личный лист перед первой сессией.',
-            href: route('games.character.edit', props.game.id),
-            primary: true,
-            accent: 'amber',
-        });
-    }
-
-    if (props.game.can_view_characters) {
-        links.push({
-            label: 'Персонажи',
-            description: 'Полный список героев партии и быстрый переход к каждому листу.',
-            href: route('games.characters.index', props.game.id),
-            accent: 'teal',
-        });
-    }
-
-    if (props.game.can_view_sessions) {
-        links.push({
-            label: 'Сессии',
-            description: 'Подготовка, запуск и управление игровыми сессиями.',
-            href: route('games.sessions.index', props.game.id),
-            accent: 'sky',
-        });
-    }
-
-    if (props.game.can_view_tickets) {
-        links.push({
-            label: 'Тикеты',
-            description: 'Личные обращения игроков к GM/co-GM и переписка по вопросам игры.',
-            href: route('games.tickets.index', props.game.id),
-            accent: 'violet',
-        });
-    }
-
-    if (props.game.can_manage_content) {
-        links.push({
-            label: 'NPC',
-            description: 'Создание и настройка нейтралов, союзников и врагов.',
-            href: route('games.npcs.index', props.game.id),
-            accent: 'rose',
-        });
-        links.push({
-            label: 'Предметы',
-            description: 'Каталог игровых предметов для выдачи персонажам.',
-            href: route('games.items.index', props.game.id),
-            accent: 'amber',
-        });
-        links.push({
-            label: 'Фоны',
-            description: 'Коллекция сцен и изображений для активной сессии.',
-            href: route('games.backgrounds.index', props.game.id),
-            accent: 'violet',
-        });
-        links.push({
-            label: 'Лист персонажа',
-            description: 'Настройка шаблона характеристик, навыков и дополнительных полей.',
-            href: route('games.character-template.edit', props.game.id),
-            accent: 'emerald',
-        });
-    }
-
-    return links;
+const featuredSession = computed(() => dashboard.value.featured_session ?? null);
+const featuredNpc = computed(() => dashboard.value.featured_npc ?? null);
+const selectedCharacter = computed(() => dashboard.value.selected_character ?? null);
+const featuredBackground = computed(() => dashboard.value.featured_background ?? null);
+const selectedNpcId = ref(null);
+const imageFrames = ref({});
+const npcChoices = computed(() => dashboard.value.recent_npcs ?? []);
+const selectedNpc = computed(() => {
+    return npcChoices.value.find((npc) => npc.id === selectedNpcId.value)
+        ?? featuredNpc.value
+        ?? npcChoices.value[0]
+        ?? null;
 });
 
-const formForMember = (member) => {
-    if (!memberRoleForms[member.id]) {
-        memberRoleForms[member.id] = useForm({
-            role: member.role,
-        });
+const sectionItems = computed(() => {
+    const items = [
+        {
+            label: 'Панель',
+            description: 'Обзор',
+            href: route('games.show', props.game.id),
+            active: route().current('games.show'),
+            icon: '/storage/ui/icons/Viewing.png',
+            available: true,
+        },
+        {
+            label: 'Сессии',
+            description: 'Планирование',
+            href: route('games.sessions.index', props.game.id),
+            active: route().current('games.sessions.*'),
+            icon: '/storage/ui/icons/Sessions.png',
+            available: props.game.can_view_sessions,
+        },
+        {
+            label: 'Персонажи',
+            description: 'Герои партии',
+            href: route('games.characters.index', props.game.id),
+            active: route().current('games.characters.*'),
+            icon: '/storage/ui/icons/Characters.png',
+            available: props.game.can_view_characters,
+        },
+        {
+            label: 'НПС',
+            description: 'Персонажи мира',
+            href: route('games.npcs.index', props.game.id),
+            active: route().current('games.npcs.*'),
+            icon: '/storage/ui/icons/players.png',
+            available: props.game.can_manage_content,
+        },
+        {
+            label: 'Фоны',
+            description: 'Локации и истории',
+            href: route('games.backgrounds.index', props.game.id),
+            active: route().current('games.backgrounds.*'),
+            icon: '/storage/ui/icons/backgrounds.png',
+            available: props.game.can_manage_content,
+        },
+        {
+            label: 'Предметы',
+            description: 'Снаряжение и вещи',
+            href: route('games.items.index', props.game.id),
+            active: route().current('games.items.*'),
+            icon: '/storage/ui/icons/inventory.png',
+            available: props.game.can_manage_content,
+        },
+        {
+            label: 'Заметки',
+            description: 'Записи мастера',
+            href: route('games.notes.index', props.game.id),
+            active: route().current('games.notes.*'),
+            icon: '/storage/ui/icons/Notes.png',
+            available: props.game.can_manage_content,
+        },
+        {
+            label: 'Лист персонажа',
+            description: 'Шаблон и поля',
+            href: route('games.character-template.edit', props.game.id),
+            active: route().current('games.character-template.*'),
+            icon: '/storage/ui/icons/Settings.png',
+            available: props.game.can_manage_content,
+        },
+        {
+            label: 'Тикеты',
+            description: 'Поддержка и запросы',
+            href: route('games.tickets.index', props.game.id),
+            active: route().current('games.tickets.*'),
+            icon: '/storage/ui/icons/Tickets.png',
+            available: props.game.can_view_tickets,
+        },
+        {
+            label: props.game.current_user_character_id ? 'Мой персонаж' : 'Создать персонажа',
+            description: props.game.current_user_character_id
+                ? 'Личный лист'
+                : 'Новый лист',
+            href: route('games.character.edit', props.game.id),
+            active: route().current('games.character.edit'),
+            icon: '/storage/ui/icons/Edit.png',
+            available: props.game.can_edit_character,
+        },
+    ];
+
+    return items.filter((item) => item.available);
+});
+
+const backgroundStyle = computed(() => {
+    if (!featuredBackground.value?.image_url) {
+        return {};
     }
 
-    return memberRoleForms[member.id];
+    return {
+        backgroundImage: `linear-gradient(90deg, rgba(13, 7, 4, 0.95), rgba(13, 7, 4, 0.56), rgba(13, 7, 4, 0.9)), url('/storage/ui/ui_background.png'), url('${featuredBackground.value.image_url}')`,
+        backgroundSize: 'auto, 560px auto, cover',
+        backgroundPosition: 'center, center, center',
+    };
+});
+
+const formatDateTime = (value) => {
+    if (!value) {
+        return 'Не задано';
+    }
+
+    return new Intl.DateTimeFormat('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(new Date(value));
 };
 
-const updateMemberRole = (member) => {
-    formForMember(member).patch(route('games.members.role.update', [props.game.id, member.id]), {
-        preserveScroll: true,
-        preserveState: true,
-    });
-};
+const statusLabel = (session) => session?.status_label ?? 'Не запланирована';
+const ticketToneClass = (tone) => ({
+    sky: 'gm-ticket-sky',
+    amber: 'gm-ticket-amber',
+    violet: 'gm-ticket-violet',
+    emerald: 'gm-ticket-emerald',
+    stone: 'gm-ticket-stone',
+}[tone] ?? 'gm-ticket-sky');
 
 const submitInvite = () => {
     inviteForm.post(route('games.invites.store', props.game.id), {
@@ -133,247 +179,438 @@ const copyInvite = async () => {
         copiedInvite.value = false;
     }, 1600);
 };
+
+const selectNpc = (npc) => {
+    selectedNpcId.value = npc.id;
+};
+
+const imageFrameKey = (scope, id, url) => `${scope}:${id ?? url ?? 'empty'}`;
+
+const registerImageFrame = (key, event) => {
+    const image = event.target;
+
+    if (!image?.naturalWidth || !image?.naturalHeight) {
+        return;
+    }
+
+    const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+
+    imageFrames.value = {
+        ...imageFrames.value,
+        [key]: {
+            '--gm-image-ratio-w': (image.naturalWidth / longestSide).toFixed(5),
+            '--gm-image-ratio-h': (image.naturalHeight / longestSide).toFixed(5),
+        },
+    };
+};
+
+const imageFrameStyle = (key) => imageFrames.value[key] ?? {};
 </script>
 
 <template>
     <Head :title="game.name" />
 
-    <AuthenticatedLayout>
+    <AuthenticatedLayout v-if="isModernTheme">
         <template #header>
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <p class="fantasy-kicker">Игра</p>
-                    <h1 class="fantasy-title text-3xl">{{ game.name }}</h1>
-                    <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
-                        Центральный экран игры: состав, доступные разделы, приглашение и управление участниками.
+                    <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">GM Dashboard</p>
+                    <h1 class="mt-2 text-3xl font-semibold text-white">{{ game.name }}</h1>
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                        Современный режим панели мастера: сессии, тикеты, контент и состав игры.
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-3">
                     <Link :href="route('games.index')">
-                        <SecondaryButton>К списку игр</SecondaryButton>
+                        <SecondaryButton>К играм</SecondaryButton>
+                    </Link>
+                    <Link v-if="game.can_view_sessions" :href="route('games.sessions.index', game.id)">
+                        <PrimaryButton>Сессии</PrimaryButton>
                     </Link>
                 </div>
             </div>
         </template>
 
-        <div class="px-4 pb-10 pt-6 sm:px-6 lg:px-8">
-            <div class="mx-auto max-w-7xl space-y-6">
-                <section class="relative overflow-hidden rounded-[2rem] border border-amber-300/15 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.16),transparent_24rem),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.14),transparent_24rem),linear-gradient(145deg,rgba(28,25,23,0.98),rgba(12,10,9,0.94))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.42)] ring-1 ring-white/5 sm:p-8">
-                    <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:38px_38px] opacity-30" />
-                    <div class="relative grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-                        <div class="space-y-5">
-                            <div class="rounded-[1.5rem] border border-white/10 bg-stone-950/45 p-5 backdrop-blur">
-                                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">Обзор кампании</p>
-                                <h2 class="mt-3 text-3xl font-semibold text-amber-50">{{ game.current_user_role_label }}</h2>
-                                <p v-if="game.description" class="mt-3 max-w-2xl text-sm leading-7 text-stone-300">{{ game.description }}</p>
-                                <p v-else class="mt-3 max-w-2xl text-sm leading-7 text-stone-500">Описание игры пока не заполнено.</p>
-                                <div class="mt-5 flex flex-wrap gap-3 text-sm">
-                                    <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-stone-300">
-                                        Владелец: <span class="font-semibold text-stone-100">{{ game.owner.name }}</span>
-                                    </div>
-                                    <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-stone-300">
-                                        Участников: <span class="font-semibold text-stone-100">{{ game.members.length }}</span>
-                                    </div>
-                                </div>
-                            </div>
+        <div class="theme-page">
+            <div class="theme-stack">
+                <div v-if="page.props.flash.success" class="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+                    {{ page.props.flash.success }}
+                </div>
 
-                            <div v-if="page.props.flash.success" class="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
-                                {{ page.props.flash.success }}
-                            </div>
+                <section class="theme-panel">
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div class="theme-list-row">
+                            <p class="text-sm text-slate-400">Персонажи</p>
+                            <strong class="mt-2 block text-3xl text-white">{{ summary.characters ?? 0 }}</strong>
                         </div>
-
-                        <div class="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-                            <article class="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur">
-                                <p class="text-sm text-stone-400">Всего участников</p>
-                                <p class="mt-2 text-3xl font-semibold text-white">{{ game.members.length }}</p>
-                            </article>
-                            <article class="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur">
-                                <p class="text-sm text-stone-400">Игроки</p>
-                                <p class="mt-2 text-3xl font-semibold text-white">{{ playerCount }}</p>
-                            </article>
-                            <article class="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur">
-                                <p class="text-sm text-stone-400">GM / co-GM</p>
-                                <p class="mt-2 text-3xl font-semibold text-white">{{ managementCount }}</p>
-                            </article>
+                        <div class="theme-list-row">
+                            <p class="text-sm text-slate-400">Сессии</p>
+                            <strong class="mt-2 block text-3xl text-white">{{ summary.sessions ?? 0 }}</strong>
+                        </div>
+                        <div class="theme-list-row">
+                            <p class="text-sm text-slate-400">Активные тикеты</p>
+                            <strong class="mt-2 block text-3xl text-white">{{ summary.active_tickets ?? 0 }}</strong>
+                        </div>
+                        <div class="theme-list-row">
+                            <p class="text-sm text-slate-400">Материалы</p>
+                            <strong class="mt-2 block text-3xl text-white">{{ (summary.npcs ?? 0) + (summary.items ?? 0) + (summary.backgrounds ?? 0) }}</strong>
                         </div>
                     </div>
                 </section>
 
-                <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                    <div class="space-y-6">
-                        <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
-                            <div class="flex flex-wrap items-start justify-between gap-4">
-                                <div>
-                                    <p class="fantasy-kicker">Навигация</p>
-                                    <h2 class="mt-2 text-2xl font-semibold text-amber-50">Разделы игры</h2>
-                                    <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-400">Все основные действия по игре собраны на одном экране.</p>
-                                </div>
-                            </div>
-
-                            <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                                <Link v-for="link in quickLinks" :key="link.label" :href="link.href">
-                                    <article
-                                        class="group h-full rounded-[1.4rem] border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_50px_rgba(0,0,0,0.28)]"
-                                        :class="{
-                                            'border-amber-300/30 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.22),transparent_12rem),rgba(41,37,36,0.92)] hover:border-amber-200/45': link.accent === 'amber',
-                                            'border-teal-300/25 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.2),transparent_12rem),rgba(28,25,23,0.92)] hover:border-teal-200/45': link.accent === 'teal',
-                                            'border-sky-300/25 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.2),transparent_12rem),rgba(28,25,23,0.92)] hover:border-sky-200/45': link.accent === 'sky',
-                                            'border-rose-300/25 bg-[radial-gradient(circle_at_top_left,rgba(251,113,133,0.2),transparent_12rem),rgba(28,25,23,0.92)] hover:border-rose-200/45': link.accent === 'rose',
-                                            'border-violet-300/25 bg-[radial-gradient(circle_at_top_left,rgba(167,139,250,0.2),transparent_12rem),rgba(28,25,23,0.92)] hover:border-violet-200/45': link.accent === 'violet',
-                                            'border-emerald-300/25 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.2),transparent_12rem),rgba(28,25,23,0.92)] hover:border-emerald-200/45': link.accent === 'emerald',
-                                        }"
-                                    >
-                                        <div class="flex h-full flex-col">
-                                            <div class="flex items-start justify-between gap-4">
-                                                <div>
-                                                    <p
-                                                        class="text-xs font-semibold uppercase tracking-[0.18em]"
-                                                        :class="{
-                                                            'text-amber-100/80': link.accent === 'amber',
-                                                            'text-teal-100/80': link.accent === 'teal',
-                                                            'text-sky-100/80': link.accent === 'sky',
-                                                            'text-rose-100/80': link.accent === 'rose',
-                                                            'text-violet-100/80': link.accent === 'violet',
-                                                            'text-emerald-100/80': link.accent === 'emerald',
-                                                        }"
-                                                    >
-                                                        Раздел
-                                                    </p>
-                                                    <h3 class="mt-3 text-xl font-semibold text-stone-50">{{ link.label }}</h3>
-                                                </div>
-                                            </div>
-
-                                            <p class="mt-4 flex-1 text-sm leading-6 text-stone-300">
-                                                {{ link.description }}
-                                            </p>
-
-                                            <div class="mt-5 flex items-center justify-between text-sm">
-                                                <span class="text-stone-500 transition group-hover:text-stone-300">Открыть раздел</span>
-                                                <span
-                                                    class="inline-flex h-10 w-10 items-center justify-center rounded-full border text-lg transition group-hover:translate-x-1"
-                                                    :class="{
-                                                        'border-amber-200/25 bg-amber-400/10 text-amber-100': link.accent === 'amber',
-                                                        'border-teal-200/25 bg-teal-400/10 text-teal-100': link.accent === 'teal',
-                                                        'border-sky-200/25 bg-sky-400/10 text-sky-100': link.accent === 'sky',
-                                                        'border-rose-200/25 bg-rose-400/10 text-rose-100': link.accent === 'rose',
-                                                        'border-violet-200/25 bg-violet-400/10 text-violet-100': link.accent === 'violet',
-                                                        'border-emerald-200/25 bg-emerald-400/10 text-emerald-100': link.accent === 'emerald',
-                                                    }"
-                                                >
-                                                    →
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </article>
-                                </Link>
-                            </div>
-                        </section>
-
-                        <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
-                            <div class="flex flex-wrap items-start justify-between gap-4">
-                                <div>
-                                    <p class="fantasy-kicker">Участники</p>
-                                    <h2 class="mt-2 text-2xl font-semibold text-amber-50">Состав игры</h2>
-                                </div>
-                                <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-stone-300">
-                                    {{ game.members.length }} человек
-                                </div>
-                            </div>
-
-                            <div class="mt-6 space-y-4">
-                                <article
-                                    v-for="member in game.members"
-                                    :key="member.id"
-                                    class="rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-amber-300/25 hover:shadow-[0_0_40px_rgba(251,191,36,0.08)]"
-                                >
-                                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                        <div>
-                                            <h3 class="text-lg font-semibold text-amber-50">{{ member.user.name }}</h3>
-                                            <p class="mt-1 text-sm text-stone-400">{{ member.user.email }}</p>
-                                        </div>
-                                        <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-300">
-                                            {{ member.role_label }}
-                                        </div>
-                                    </div>
-
-                                    <div v-if="game.can_manage_member_roles && member.user.id !== game.owner.id" class="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                                        <div>
-                                            <label class="fantasy-kicker">Роль</label>
-                                            <select
-                                                v-model="formForMember(member).role"
-                                                class="mt-2 block w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-sm text-stone-100 shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
-                                            >
-                                                <option v-for="option in roleOptions" :key="option.value" :value="option.value">
-                                                    {{ option.label }}
-                                                </option>
-                                            </select>
-                                            <InputError class="mt-2" :message="formForMember(member).errors.role" />
-                                        </div>
-
-                                        <PrimaryButton :disabled="formForMember(member).processing" @click="updateMemberRole(member)">
-                                            Сохранить роль
-                                        </PrimaryButton>
-                                    </div>
-                                </article>
-                            </div>
-                        </section>
-                    </div>
-
-                    <div class="space-y-6">
-                        <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                <div class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+                    <section class="theme-panel">
+                        <div class="flex items-start justify-between gap-4">
                             <div>
-                                <p class="fantasy-kicker">Приглашение</p>
-                                <h2 class="mt-2 text-2xl font-semibold text-amber-50">Ссылка для входа</h2>
-                                <p class="mt-2 text-sm leading-6 text-stone-400">Для игры может существовать одна активная ссылка приглашения.</p>
+                                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-200/70">Ближайшая сессия</p>
+                                <h2 class="mt-2 text-2xl font-semibold text-white">{{ featuredSession?.title ?? 'Сессия не создана' }}</h2>
+                                <p class="mt-2 text-sm text-slate-400">{{ statusLabel(featuredSession) }} · {{ formatDateTime(featuredSession?.started_at) }}</p>
                             </div>
+                            <Link v-if="featuredSession && game.can_view_sessions" :href="route('games.sessions.show', [game.id, featuredSession.id])">
+                                <SecondaryButton>Открыть</SecondaryButton>
+                            </Link>
+                        </div>
+                    </section>
 
-                            <form v-if="game.can_manage_invites" class="mt-6" @submit.prevent="submitInvite">
+                    <section class="theme-panel">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-200/70">Приглашение</p>
+                        <div class="mt-4 flex flex-col gap-3">
+                            <form v-if="game.can_manage_invites" @submit.prevent="submitInvite">
                                 <PrimaryButton :disabled="inviteForm.processing">
-                                    {{ activeInviteLink ? 'Перегенерировать ссылку' : 'Сгенерировать ссылку' }}
+                                    {{ activeInviteLink ? 'Обновить ссылку' : 'Создать ссылку' }}
                                 </PrimaryButton>
                             </form>
-
-                            <div v-if="activeInviteLink" class="mt-6 rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5">
-                                <p class="text-sm font-semibold text-stone-100">Активная ссылка</p>
-                                <div class="mt-4 flex flex-col gap-3 sm:flex-row">
-                                    <input
-                                        :value="activeInviteLink"
-                                        class="block w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-sm text-stone-100 shadow-sm"
-                                        readonly
-                                    />
-                                    <SecondaryButton @click="copyInvite">
-                                        {{ copiedInvite ? 'Скопировано' : 'Копировать' }}
-                                    </SecondaryButton>
-                                </div>
+                            <div v-if="activeInviteLink" class="flex flex-col gap-3 sm:flex-row">
+                                <input :value="activeInviteLink" class="w-full rounded-2xl border border-white/10 bg-stone-900 px-4 py-3 text-sm text-slate-200" readonly />
+                                <SecondaryButton @click="copyInvite">{{ copiedInvite ? 'Скопировано' : 'Копировать' }}</SecondaryButton>
                             </div>
-
-                            <div v-else class="mt-6 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
-                                Активной ссылки пока нет.
-                            </div>
-
-                            <div v-if="!game.can_manage_invites" class="mt-6 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
-                                Управлять приглашениями могут только GM и co-GM.
-                            </div>
-                        </section>
-
-                        <section class="rounded-[1.75rem] border border-teal-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
-                            <p class="fantasy-kicker">Подсказка</p>
-                            <h2 class="mt-2 text-2xl font-semibold text-teal-50">Рабочий сценарий</h2>
-                            <div class="mt-5 space-y-3 text-sm leading-6 text-stone-300">
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                                    Сначала проверьте состав участников и роли, затем переходите к контенту и сессиям.
-                                </div>
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                                    Для игроков основной вход обычно начинается с создания персонажа и просмотра своих листов.
-                                </div>
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                                    Для мастера этот экран работает как центральная панель управления всей игрой.
-                                </div>
-                            </div>
-                        </section>
-                    </div>
+                            <p v-else class="text-sm text-slate-500">Активной ссылки пока нет.</p>
+                        </div>
+                    </section>
                 </div>
+
             </div>
         </div>
     </AuthenticatedLayout>
+
+    <GameMasterLayout
+        v-else
+        :game="game"
+        :navigation="sectionItems"
+        title="Панель Мастера"
+        subtitle="Управление игрой и миром"
+    >
+        <div class="gm-dashboard">
+            <div v-if="page.props.flash.success" class="gm-alert gm-alert-success">
+                {{ page.props.flash.success }}
+            </div>
+
+            <div class="gm-dashboard-grid">
+                <section class="gm-panel gm-panel-dense gm-session-panel gm-dashboard-session" :style="backgroundStyle">
+                    <div class="gm-panel-head">
+                        <div class="flex items-center gap-3">
+                            <span class="gm-panel-icon">
+                                <img src="/storage/ui/icons/Sessions.png" alt="" />
+                            </span>
+                            <div>
+                                <p class="gm-kicker">Ближайшая сессия</p>
+                                <h3 class="gm-panel-title">{{ featuredSession?.title ?? 'Сессия не создана' }}</h3>
+                            </div>
+                        </div>
+                        <FantasyBadge>{{ statusLabel(featuredSession) }}</FantasyBadge>
+                    </div>
+
+                    <div class="relative z-10 mt-5 grid min-h-[13rem] gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                        <div class="space-y-3">
+                            <div class="gm-session-meta">
+                                <span>Время</span>
+                                <strong>{{ formatDateTime(featuredSession?.started_at) }}</strong>
+                            </div>
+                            <div class="gm-session-meta">
+                                <span>Участники</span>
+                                <strong>{{ featuredSession?.participants_count ?? game.members.length }}</strong>
+                            </div>
+                            <div v-if="featuredBackground" class="gm-session-meta">
+                                <span>Фон сцены</span>
+                                <strong>{{ featuredBackground.title }}</strong>
+                            </div>
+                        </div>
+
+                        <Link v-if="featuredSession && game.can_view_sessions" :href="route('games.sessions.show', [game.id, featuredSession.id])">
+                            <FantasyButton>Открыть сессию</FantasyButton>
+                        </Link>
+                        <Link v-else-if="game.can_manage_sessions" :href="route('games.sessions.index', game.id)">
+                            <FantasyButton>Создать сессию</FantasyButton>
+                        </Link>
+                    </div>
+                </section>
+
+                <section class="gm-panel gm-panel-dense gm-dashboard-tickets">
+                    <div class="gm-panel-head">
+                        <div class="flex items-center gap-3">
+                            <span class="gm-panel-icon">
+                                <img src="/storage/ui/icons/Tickets.png" alt="" />
+                            </span>
+                            <div>
+                                <p class="gm-kicker">Активные тикеты</p>
+                                <h3 class="gm-panel-title">{{ summary.active_tickets ?? 0 }} открыто</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="dashboard.active_tickets?.length" class="relative z-10 mt-4 space-y-3">
+                        <Link
+                            v-for="ticket in dashboard.active_tickets"
+                            :key="ticket.id"
+                            :href="route('games.tickets.show', [game.id, ticket.id])"
+                            class="gm-ticket-row"
+                            :class="ticketToneClass(ticket.status_tone)"
+                        >
+                            <span class="gm-ticket-dot" />
+                            <span class="min-w-0 flex-1">
+                                <strong>{{ ticket.title }}</strong>
+                                <small>Игрок: {{ ticket.creator_name ?? 'не указан' }}</small>
+                            </span>
+                            <span>{{ formatDateTime(ticket.last_message_at || ticket.updated_at) }}</span>
+                        </Link>
+                    </div>
+                    <div v-else class="gm-empty mt-4">Активных тикетов нет.</div>
+
+                    <div class="gm-panel-actions mt-4">
+                        <Link v-if="game.can_view_tickets" :href="route('games.tickets.index', game.id)">
+                            <FantasyButton variant="secondary">Все тикеты</FantasyButton>
+                        </Link>
+                    </div>
+                </section>
+
+                <section class="gm-panel gm-panel-dense gm-dashboard-npc">
+                    <div class="gm-panel-head">
+                        <div class="flex items-center gap-3">
+                            <span class="gm-panel-icon">
+                                <img src="/storage/ui/icons/players.png" alt="" />
+                            </span>
+                            <div>
+                                <p class="gm-kicker">Выбранный НПС</p>
+                                <h3 class="gm-panel-title">{{ selectedNpc?.name ?? 'НПС не выбран' }}</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="selectedNpc" class="relative z-10 mt-4 grid gap-4 sm:grid-cols-[8rem_1fr]">
+                        <div
+                            class="gm-portrait gm-image-frame gm-image-frame-npc"
+                            :style="imageFrameStyle(imageFrameKey('npc', selectedNpc.id, selectedNpc.avatar_url))"
+                        >
+                            <img
+                                v-if="selectedNpc.avatar_url"
+                                :src="selectedNpc.avatar_url"
+                                alt=""
+                                @load="registerImageFrame(imageFrameKey('npc', selectedNpc.id, selectedNpc.avatar_url), $event)"
+                            />
+                            <img v-else src="/storage/ui/icons/players.png" alt="" class="gm-portrait-icon" />
+                        </div>
+                        <div class="min-w-0 space-y-3">
+                            <FantasyBadge>{{ selectedNpc.type_label }}</FantasyBadge>
+                            <p class="line-clamp-5 text-sm leading-6 text-[#d7c5a4]">
+                                {{ selectedNpc.description || 'Описание НПС пока не заполнено.' }}
+                            </p>
+                            <Link :href="route('games.npcs.edit', [game.id, selectedNpc.id])">
+                                <FantasyButton variant="secondary">Открыть НПС</FantasyButton>
+                            </Link>
+                        </div>
+                    </div>
+                    <div v-if="selectedNpc && npcChoices.length > 1" class="gm-npc-picker">
+                        <button
+                            v-for="npc in npcChoices"
+                            :key="npc.id"
+                            type="button"
+                            class="gm-npc-choice gm-image-frame gm-image-frame-npc-choice"
+                            :class="{ 'gm-npc-choice-active': selectedNpc?.id === npc.id }"
+                            :aria-label="`Выбрать НПС ${npc.name}`"
+                            :style="imageFrameStyle(imageFrameKey('npc-choice', npc.id, npc.avatar_url))"
+                            @click="selectNpc(npc)"
+                        >
+                            <img
+                                v-if="npc.avatar_url"
+                                :src="npc.avatar_url"
+                                alt=""
+                                @load="registerImageFrame(imageFrameKey('npc-choice', npc.id, npc.avatar_url), $event)"
+                            />
+                            <img v-else src="/storage/ui/icons/players.png" alt="" />
+                        </button>
+                    </div>
+                    <div v-else-if="!selectedNpc" class="gm-empty mt-4">Каталог НПС пока пуст.</div>
+                </section>
+
+                <section id="party" class="gm-panel gm-panel-dense gm-party-panel gm-dashboard-party">
+                    <div class="gm-panel-head">
+                        <div class="flex items-center gap-3">
+                            <span class="gm-panel-icon">
+                                <img src="/storage/ui/icons/Characters.png" alt="" />
+                            </span>
+                            <div>
+                                <p class="gm-kicker">Текущая партия</p>
+                                <h3 class="gm-panel-title">{{ summary.characters ?? 0 }} персонажей</h3>
+                            </div>
+                        </div>
+                        <FantasyBadge tone="muted">{{ game.members.length }} участников</FantasyBadge>
+                    </div>
+
+                    <div v-if="dashboard.party?.length" class="relative z-10 mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+                        <Link
+                            v-for="character in dashboard.party"
+                            :key="character.id"
+                            :href="route('games.characters.show', [game.id, character.id])"
+                            class="gm-party-card"
+                        >
+                            <span
+                                class="gm-party-avatar gm-image-frame gm-image-frame-party"
+                                :style="imageFrameStyle(imageFrameKey('party', character.id, character.avatar_url))"
+                            >
+                                <img
+                                    v-if="character.avatar_url"
+                                    :src="character.avatar_url"
+                                    alt=""
+                                    @load="registerImageFrame(imageFrameKey('party', character.id, character.avatar_url), $event)"
+                                />
+                                <img v-else src="/storage/ui/icons/Profile.png" alt="" />
+                            </span>
+                            <span class="gm-party-card-body min-w-0">
+                                <strong>{{ character.name }}</strong>
+                                <small>{{ character.origin || character.user?.name || 'Герой партии' }}</small>
+                            </span>
+                        </Link>
+                    </div>
+                    <div v-else class="gm-empty mt-4">Персонажи партии пока не созданы.</div>
+                </section>
+
+                <section class="gm-panel gm-panel-dense gm-items-panel gm-dashboard-items">
+                    <div class="gm-panel-head">
+                        <div class="flex items-center gap-3">
+                            <span class="gm-panel-icon">
+                                <img src="/storage/ui/icons/inventory.png" alt="" />
+                            </span>
+                            <div>
+                                <p class="gm-kicker">Недавние предметы</p>
+                                <h3 class="gm-panel-title">{{ summary.items ?? 0 }} в каталоге</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="dashboard.recent_items?.length" class="relative z-10 mt-4 space-y-2">
+                        <Link
+                            v-for="item in dashboard.recent_items"
+                            :key="item.id"
+                            :href="route('games.items.edit', [game.id, item.id])"
+                            class="gm-item-row"
+                        >
+                            <span
+                                class="gm-item-thumb gm-image-frame gm-image-frame-item"
+                                :style="imageFrameStyle(imageFrameKey('item', item.id, item.image_url))"
+                            >
+                                <img
+                                    v-if="item.image_url"
+                                    :src="item.image_url"
+                                    alt=""
+                                    @load="registerImageFrame(imageFrameKey('item', item.id, item.image_url), $event)"
+                                />
+                                <img v-else src="/storage/ui/icons/inventory.png" alt="" />
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <strong>{{ item.name }}</strong>
+                                <small>{{ item.category || 'Без категории' }}</small>
+                            </span>
+                            <span>{{ formatDateTime(item.updated_at) }}</span>
+                        </Link>
+                    </div>
+                    <div v-else class="gm-empty mt-4">Предметы пока не добавлены.</div>
+                </section>
+            </div>
+
+            <section class="gm-character-sheet">
+                <div v-if="selectedCharacter" class="relative z-10 grid gap-5 lg:grid-cols-[18rem_1fr]">
+                    <div class="grid gap-4 sm:grid-cols-[9rem_1fr] lg:block">
+                        <div
+                            class="gm-sheet-portrait gm-image-frame gm-image-frame-sheet"
+                            :style="imageFrameStyle(imageFrameKey('sheet', selectedCharacter.id, selectedCharacter.avatar_url))"
+                        >
+                            <img
+                                v-if="selectedCharacter.avatar_url"
+                                :src="selectedCharacter.avatar_url"
+                                alt=""
+                                @load="registerImageFrame(imageFrameKey('sheet', selectedCharacter.id, selectedCharacter.avatar_url), $event)"
+                            />
+                            <img v-else src="/storage/ui/icons/Profile.png" alt="" class="gm-sheet-icon" />
+                        </div>
+                        <div class="min-w-0 lg:mt-4">
+                            <p class="gm-sheet-kicker">Просмотр листа персонажа</p>
+                            <h3 class="gm-sheet-title">{{ selectedCharacter.name }}</h3>
+                            <p class="mt-2 text-sm leading-6 text-[#4a2a12]">
+                                {{ selectedCharacter.origin || selectedCharacter.user?.name || 'Персонаж партии' }}
+                            </p>
+                            <div class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                                <div class="gm-sheet-stat">
+                                    <span>Статус</span>
+                                    <strong>{{ selectedCharacter.is_active ? 'Активен' : 'В архиве' }}</strong>
+                                </div>
+                                <div class="gm-sheet-stat">
+                                    <span>Навыки</span>
+                                    <strong>{{ selectedCharacter.skills?.length ?? 0 }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
+                        <div>
+                            <p class="gm-sheet-section-title">Способности</p>
+                            <div v-if="selectedCharacter.attributes?.length" class="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2">
+                                <div v-for="attribute in selectedCharacter.attributes" :key="attribute.key" class="gm-sheet-line">
+                                    <span>{{ attribute.label }}</span>
+                                    <strong>{{ attribute.value }}</strong>
+                                </div>
+                            </div>
+                            <div v-else class="mt-3 text-sm text-[#6a4727]">Шаблон характеристик пока не настроен.</div>
+                        </div>
+
+                        <div>
+                            <p class="gm-sheet-section-title">Навыки и поля</p>
+                            <div v-if="selectedCharacter.skills?.length" class="mt-3 flex flex-wrap gap-2">
+                                <span v-for="skill in selectedCharacter.skills" :key="skill.key" class="gm-sheet-chip">
+                                    {{ skill.label }}
+                                </span>
+                            </div>
+                            <div v-else class="mt-3 text-sm text-[#6a4727]">Активные навыки не отмечены.</div>
+
+                            <div v-if="selectedCharacter.extra_fields?.length" class="mt-5 space-y-2">
+                                <div v-for="field in selectedCharacter.extra_fields" :key="field.key" class="gm-sheet-line">
+                                    <span>{{ field.label }}</span>
+                                    <strong>{{ field.value || '—' }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2 flex justify-center">
+                        <Link :href="route('games.characters.show', [game.id, selectedCharacter.id])">
+                            <FantasyButton>Открыть полный лист</FantasyButton>
+                        </Link>
+                    </div>
+                </div>
+                <div v-else class="relative z-10 text-[#4a2a12]">
+                    Персонажи пока не созданы.
+                </div>
+            </section>
+
+            <footer class="gm-bottom-bar">
+                <span>Мир: {{ game.name }}</span>
+                <span>Игроков: {{ playerCount }}</span>
+                <span>{{ featuredSession ? `Сессия: ${statusLabel(featuredSession)}` : 'Сессия не активна' }}</span>
+                <Link :href="route('profile.edit')" class="gm-bottom-link">
+                    <img src="/storage/ui/icons/Settings.png" alt="" />
+                    Настройки пользователя
+                </Link>
+            </footer>
+        </div>
+    </GameMasterLayout>
 </template>

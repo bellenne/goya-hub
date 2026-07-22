@@ -1,5 +1,5 @@
-<script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+﻿<script setup>
+import GameThemeLayout from '@/Layouts/GameThemeLayout.vue';
 import DangerButton from '@/Components/DangerButton.vue';
 import GameNotesModal from '@/Components/GameNotesModal.vue';
 import InputError from '@/Components/InputError.vue';
@@ -109,6 +109,18 @@ const isMusicMinimized = ref(storedMusicMinimized === '1');
 const musicAudio = ref(null);
 const youtubeFrame = ref(null);
 const musicError = ref('');
+const isBackgroundViewerOpen = ref(false);
+const backgroundViewer = ref(null);
+const backgroundViewerScale = ref(1);
+const backgroundViewerOffsetX = ref(0);
+const backgroundViewerOffsetY = ref(0);
+const backgroundViewerPointer = ref(null);
+let backgroundViewerBodyOverflow = '';
+
+const backgroundViewerImageUrl = computed(() => props.scene.background?.image_url ?? '');
+const backgroundViewerImageStyle = computed(() => ({
+    transform: `translate3d(${backgroundViewerOffsetX.value}px, ${backgroundViewerOffsetY.value}px, 0) scale(${backgroundViewerScale.value})`,
+}));
 
 const sceneForm = useForm({
     background_id: props.scene.controls.current_background_id ?? '',
@@ -252,10 +264,10 @@ const musicStatusLabel = computed(() => ({
     stopped: 'Остановлено',
 }[localMusic.value?.playback_status] ?? 'Остановлено'));
 const musicStatusClass = computed(() => ({
-    playing: 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100',
-    paused: 'border-amber-300/25 bg-amber-400/10 text-amber-100',
-    stopped: 'border-stone-500/35 bg-stone-700/30 text-stone-200',
-}[localMusic.value?.playback_status] ?? 'border-stone-500/35 bg-stone-700/30 text-stone-200'));
+    playing: 'gm-badge-success',
+    paused: 'gm-badge-warning',
+    stopped: 'gm-badge-muted',
+}[localMusic.value?.playback_status] ?? 'gm-badge-muted'));
 const musicSourceLabel = computed(() => ({
     uploaded: 'Uploaded track',
     direct_url: 'Direct URL',
@@ -677,6 +689,70 @@ const keepContextMenu = () => {
 };
 
 const canPreviewImage = (entity) => Boolean(entity?.avatar_url);
+
+const resetBackgroundViewer = () => {
+    backgroundViewerScale.value = 1;
+    backgroundViewerOffsetX.value = 0;
+    backgroundViewerOffsetY.value = 0;
+    backgroundViewerPointer.value = null;
+};
+
+const openBackgroundViewer = () => {
+    if (!backgroundViewerImageUrl.value) return;
+
+    resetBackgroundViewer();
+    isBackgroundViewerOpen.value = true;
+
+    nextTick(() => backgroundViewer.value?.focus());
+};
+
+const closeBackgroundViewer = () => {
+    isBackgroundViewerOpen.value = false;
+    resetBackgroundViewer();
+};
+
+const zoomBackgroundViewer = (event) => {
+    const viewport = backgroundViewer.value;
+    if (!viewport) return;
+
+    const previousScale = backgroundViewerScale.value;
+    const nextScale = Math.min(5, Math.max(0.25, previousScale * Math.exp(-event.deltaY * 0.0015)));
+    if (nextScale === previousScale) return;
+
+    const bounds = viewport.getBoundingClientRect();
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
+    const ratio = nextScale / previousScale;
+
+    backgroundViewerOffsetX.value = (event.clientX - centerX) - ((event.clientX - centerX) - backgroundViewerOffsetX.value) * ratio;
+    backgroundViewerOffsetY.value = (event.clientY - centerY) - ((event.clientY - centerY) - backgroundViewerOffsetY.value) * ratio;
+    backgroundViewerScale.value = nextScale;
+};
+
+const startBackgroundViewerPan = (event) => {
+    backgroundViewerPointer.value = {
+        id: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        offsetX: backgroundViewerOffsetX.value,
+        offsetY: backgroundViewerOffsetY.value,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+};
+
+const moveBackgroundViewerPan = (event) => {
+    const pointer = backgroundViewerPointer.value;
+    if (!pointer || pointer.id !== event.pointerId) return;
+
+    backgroundViewerOffsetX.value = pointer.offsetX + event.clientX - pointer.x;
+    backgroundViewerOffsetY.value = pointer.offsetY + event.clientY - pointer.y;
+};
+
+const stopBackgroundViewerPan = (event) => {
+    if (backgroundViewerPointer.value?.id === event.pointerId) {
+        backgroundViewerPointer.value = null;
+    }
+};
 
 const openImagePreview = (entity) => {
     if (!canPreviewImage(entity)) return;
@@ -1518,6 +1594,24 @@ watch(showNpcLibraryModal, (isOpen) => {
     }
 });
 
+watch(isBackgroundViewerOpen, (isOpen) => {
+    if (typeof document === 'undefined') return;
+
+    if (isOpen) {
+        backgroundViewerBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return;
+    }
+
+    document.body.style.overflow = backgroundViewerBodyOverflow;
+});
+
+watch(backgroundViewerImageUrl, (imageUrl) => {
+    if (!imageUrl && isBackgroundViewerOpen.value) {
+        closeBackgroundViewer();
+    }
+});
+
 onMounted(() => {
     if (!window.Echo) return;
     sceneChannel = window.Echo.private(props.scene.channel)
@@ -1530,6 +1624,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    if (typeof document !== 'undefined' && isBackgroundViewerOpen.value) {
+        document.body.style.overflow = backgroundViewerBodyOverflow;
+    }
     if (animationTimeout) clearTimeout(animationTimeout);
     if (lifecycleNoticeTimeout) clearTimeout(lifecycleNoticeTimeout);
     clearNpcSpawnEffectTimeouts();
@@ -1546,9 +1643,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <Head :title="`${session.title} Table`" />
+    <Head :title="`${session.title} - игровой стол`" />
 
-    <AuthenticatedLayout>
+    <GameThemeLayout immersive :game="game" section="Игровой стол" :title="session.title">
         <div
             v-if="lifecycleNotice"
             class="fixed left-1/2 top-5 z-[80] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border px-5 py-4 text-sm shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-md"
@@ -1598,16 +1695,61 @@ onBeforeUnmount(() => {
             <span class="hidden sm:inline">{{ isCursorBroadcasting ? 'Курсор вкл' : 'Курсор выкл' }}</span>
         </button>
 
+        <button
+            v-if="!isBackgroundViewerOpen"
+            type="button"
+            class="fixed left-16 top-3 z-[86] inline-flex h-11 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold uppercase tracking-[0.12em] shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition sm:left-44 sm:top-6 sm:h-auto sm:py-3"
+            :class="backgroundViewerImageUrl ? 'border-amber-300/30 bg-stone-950/72 text-amber-100 hover:border-amber-200 hover:bg-amber-300/10' : 'cursor-not-allowed border-stone-700/50 bg-stone-950/55 text-stone-500'"
+            :disabled="!backgroundViewerImageUrl"
+            title="Открыть просмотр фона"
+            @click="openBackgroundViewer"
+        >
+            <span class="text-base leading-none">⌕</span>
+            <span class="hidden sm:inline">Просмотр фона</span>
+        </button>
+
+        <div
+            v-if="isBackgroundViewerOpen"
+            ref="backgroundViewer"
+            class="fixed inset-0 z-[200] touch-none select-none overflow-hidden bg-black outline-none"
+            :class="backgroundViewerPointer ? 'cursor-grabbing' : 'cursor-grab'"
+            tabindex="-1"
+            @dblclick="resetBackgroundViewer"
+            @keydown.esc="closeBackgroundViewer"
+            @pointercancel="stopBackgroundViewerPan"
+            @pointerdown="startBackgroundViewerPan"
+            @pointermove="moveBackgroundViewerPan"
+            @pointerup="stopBackgroundViewerPan"
+            @wheel.prevent="zoomBackgroundViewer"
+        >
+            <img
+                :src="backgroundViewerImageUrl"
+                :alt="scene.background?.title ?? 'Фон сцены'"
+                class="pointer-events-none absolute inset-0 h-full w-full origin-center object-cover will-change-transform"
+                :style="backgroundViewerImageStyle"
+                draggable="false"
+            />
+
+            <button
+                type="button"
+                class="absolute right-3 top-3 z-10 rounded-lg border border-amber-300/40 bg-stone-950/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.45)] backdrop-blur-md transition hover:border-amber-200 hover:bg-amber-300/10 sm:right-6 sm:top-6"
+                @pointerdown.stop
+                @click="closeBackgroundViewer"
+            >
+                Вернуться к столу
+            </button>
+        </div>
+
         <template #header>
             <div v-if="can_manage_sessions" class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <p class="fantasy-kicker">{{ can_manage_sessions ? 'GM table' : 'Player table' }}</p>
+                    <p class="fantasy-kicker">{{ can_manage_sessions ? 'Стол мастера' : 'Стол игрока' }}</p>
                     <h1 class="fantasy-title">{{ session.title }}</h1>
                     <p class="fantasy-subtitle mt-1">{{ game.name }}</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <span class="fantasy-chip">{{ session.status_label }}</span>
-                    <span class="fantasy-chip-muted">{{ session.participants.length }} at table</span>
+                    <span class="fantasy-chip-muted">{{ session.participants.length }} за столом</span>
                     <Link :href="route('games.sessions.index', game.id)">
                         <SecondaryButton>К списку сессий</SecondaryButton>
                     </Link>
@@ -1686,7 +1828,7 @@ onBeforeUnmount(() => {
 
             <div class="group absolute bottom-[6.75rem] left-1/2 z-30 hidden w-[min(32rem,calc(100vw-1rem))] -translate-x-1/2 sm:block">
                 <div class="max-h-24 overflow-hidden rounded-lg border border-transparent bg-stone-950/24 p-3 text-sm text-stone-200 backdrop-blur-sm transition group-hover:max-h-72 group-hover:overflow-y-auto group-hover:border-amber-300/20 group-hover:bg-stone-950/66 sm:max-h-28">
-                    <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Roll log</p>
+                    <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Журнал бросков</p>
                     <article v-for="roll in rollLogItems" :key="`hud-log-${roll.id}`" class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:hidden">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
                         <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
@@ -1727,7 +1869,7 @@ onBeforeUnmount(() => {
                     v-if="can_manage_sessions"
                     type="button"
                     class="grid h-11 w-11 place-items-center rounded-lg border border-violet-300/30 bg-stone-950/65 text-xl text-violet-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-violet-200 sm:h-14 sm:w-14 sm:text-2xl"
-                    title="Scene music"
+                    title="Музыка сцены"
                     @click="showMusicModal = true"
                 >
                     ♪
@@ -1735,12 +1877,12 @@ onBeforeUnmount(() => {
                 <div class="group relative">
                     <button type="button" class="grid h-11 w-11 place-items-center rounded-lg border border-amber-300/30 bg-stone-950/65 text-xl text-amber-100 shadow-[0_18px_52px_rgba(0,0,0,0.42)] backdrop-blur-md transition hover:border-amber-200 sm:h-14 sm:w-14 sm:text-2xl">▣</button>
                     <div class="absolute right-0 top-full hidden w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border border-amber-300/20 bg-stone-950/95 p-4 shadow-2xl group-hover:block">
-                        <p class="fantasy-kicker">Backgrounds</p>
-                        <input v-model="backgroundSearch" type="search" class="fantasy-input mt-3 block w-full" placeholder="Search background" />
+                        <p class="fantasy-kicker">Фоны</p>
+                        <input v-model="backgroundSearch" type="search" class="fantasy-input mt-3 block w-full" placeholder="Поиск фона" />
                         <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-                            <button type="button" class="block w-full rounded-lg border border-stone-600/40 bg-stone-900/70 px-3 py-2 text-left text-sm text-stone-200 hover:border-amber-300/50" :class="!scene.background ? 'ring-2 ring-amber-300/50' : ''" @click="setSceneBackground('')">No background</button>
+                            <button type="button" class="block w-full rounded-lg border border-stone-600/40 bg-stone-900/70 px-3 py-2 text-left text-sm text-stone-200 hover:border-amber-300/50" :class="!scene.background ? 'ring-2 ring-amber-300/50' : ''" @click="setSceneBackground('')">Без фона</button>
                             <button v-for="background in filteredBackgrounds" :key="`gm-bg-${background.id}`" type="button" class="block w-full overflow-hidden rounded-lg border border-stone-600/40 bg-stone-900/70 text-left hover:border-amber-300/50" :class="scene.background?.id === background.id ? 'ring-2 ring-amber-300/50' : ''" @click="setSceneBackground(background.id)">
-                                <img v-if="background.image_url" :src="background.image_url" :alt="background.title" class="h-20 w-full object-cover" />
+                                <img v-if="background.image_url" :src="background.image_url" :alt="background.title" class="h-20 w-full object-contain" />
                                 <span class="block px-3 py-2 text-sm text-amber-50">{{ background.title }}</span>
                             </button>
                         </div>
@@ -1826,7 +1968,7 @@ onBeforeUnmount(() => {
 
             <div class="group absolute bottom-[6.75rem] left-1/2 z-30 hidden w-[min(32rem,calc(100vw-1rem))] -translate-x-1/2 sm:block">
                 <div class="max-h-24 overflow-hidden rounded-lg border border-transparent bg-stone-950/24 p-3 text-sm text-stone-200 backdrop-blur-sm transition group-hover:max-h-72 group-hover:overflow-y-auto group-hover:border-amber-300/20 group-hover:bg-stone-950/66 sm:max-h-28">
-                    <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Roll log</p>
+                    <p class="mb-2 hidden text-xs font-semibold uppercase tracking-[0.18em] text-amber-300 group-hover:block">Журнал бросков</p>
                     <article v-for="roll in rollLogItems" :key="`gm-hud-log-${roll.id}`" class="mb-2 rounded-md bg-stone-950/35 px-3 py-2 shadow-sm group-hover:hidden">
                         <span class="font-semibold text-amber-100">{{ rollActorName(roll) }}</span>
                         <span class="text-stone-300"> {{ rollFormulaText(roll) }} -> </span>
@@ -1876,15 +2018,15 @@ onBeforeUnmount(() => {
             </button>
             <template v-else>
             <div class="flex items-start justify-between gap-3">
-                <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-violet-300/25 bg-violet-300/10 text-lg text-violet-100 transition hover:border-violet-200" :title="isMusicExpanded ? 'Collapse music' : 'Expand music'" @click="isMusicExpanded = !isMusicExpanded">
+                <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-violet-300/25 bg-violet-300/10 text-lg text-violet-100 transition hover:border-violet-200" :title="isMusicExpanded ? 'Свернуть музыку' : 'Развернуть музыку'" @click="isMusicExpanded = !isMusicExpanded">
                     {{ isMusicExpanded ? '−' : '♪' }}
                 </button>
                 <div class="min-w-0 flex-1">
-                    <p v-if="isMusicExpanded" class="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-200/80">Scene music</p>
+                    <p v-if="isMusicExpanded" class="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-200/80">Музыка сцены</p>
                     <p class="mt-1 truncate text-sm font-semibold text-amber-50">{{ musicTitle }}</p>
                     <p v-if="isMusicExpanded" class="mt-1 text-xs text-stone-400">{{ musicSourceLabel }}</p>
                 </div>
-                <span class="shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]" :class="musicStatusClass">
+                <span class="gm-badge shrink-0 px-2.5 py-1 text-[10px]" :class="musicStatusClass">
                     {{ musicStatusLabel }}
                 </span>
                 <button
@@ -2003,7 +2145,7 @@ onBeforeUnmount(() => {
 
                 <section class="rounded-lg border border-amber-300/20 bg-stone-950/70 p-3 shadow-[0_28px_90px_rgba(0,0,0,0.55)] ring-1 ring-white/5">
                     <div class="grid gap-3 xl:grid-cols-[18rem_minmax(0,1fr)_24rem]">
-                        <aside class="fantasy-panel p-4">
+                        <aside class="theme-panel p-4">
                             <div class="flex items-center justify-between gap-3">
                                 <div>
                                     <p class="fantasy-kicker">Party</p>
@@ -2015,11 +2157,11 @@ onBeforeUnmount(() => {
                             <div class="mt-4 space-y-3">
                                 <article v-if="scene.own_character" class="rounded-lg border border-amber-300/20 bg-stone-950/70 p-3" :class="isSpeaking('character', scene.own_character.id) ? 'ring-2 ring-amber-300/70' : ''">
                                     <div class="flex gap-3">
-                                        <img v-if="scene.own_character.avatar_url" :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="h-14 w-14 rounded-lg object-cover" />
+                                        <img v-if="scene.own_character.avatar_url" :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="h-14 w-14 rounded-lg object-contain" />
                                         <div class="min-w-0 flex-1">
                                             <p class="truncate font-semibold text-amber-50">{{ scene.own_character.name }}</p>
                                             <p class="text-xs text-stone-400">{{ scene.own_character.user_name }}</p>
-                                            <p v-if="isSpeaking('character', scene.own_character.id)" class="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">speaking</p>
+                                            <p v-if="isSpeaking('character', scene.own_character.id)" class="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">говорит</p>
                                         </div>
                                     </div>
                                     <div class="mt-3 flex flex-wrap gap-2">
@@ -2027,24 +2169,24 @@ onBeforeUnmount(() => {
                                         <SecondaryButton @click="openCharacterModal('inventory')">Инвентарь</SecondaryButton>
                                     </div>
                                 </article>
-                                <p v-else class="fantasy-empty p-4">Персонаж пока не создан.</p>
+                                <p v-else class="theme-empty p-4">Персонаж пока не создан.</p>
 
                                 <article v-for="teammate in scene.teammates" :key="`rail-character-${teammate.id}`" class="flex items-center gap-3 rounded-lg border border-stone-600/40 bg-stone-950/60 px-3 py-2" :class="isSpeaking('character', teammate.id) ? 'ring-2 ring-amber-300/60' : ''">
-                                    <img v-if="teammate.avatar_url" :src="teammate.avatar_url" :alt="teammate.name" class="h-11 w-11 rounded-lg object-cover" />
+                                    <img v-if="teammate.avatar_url" :src="teammate.avatar_url" :alt="teammate.name" class="h-11 w-11 rounded-lg object-contain" />
                                     <div class="min-w-0 flex-1">
                                         <p class="truncate font-medium text-amber-50">{{ teammate.name }}</p>
                                         <p class="truncate text-xs text-stone-400">{{ teammate.user_name }}</p>
                                     </div>
-                                    <span v-if="isSpeaking('character', teammate.id)" class="text-xs text-amber-200">speaker</span>
+                                    <span v-if="isSpeaking('character', teammate.id)" class="text-xs text-amber-200">говорит</span>
                                 </article>
 
                                 <article v-for="npc in alliedNpcs" :key="`rail-ally-${npc.id}`" class="flex items-center gap-3 rounded-lg border border-emerald-300/30 bg-emerald-400/10 px-3 py-2" :class="isSpeaking('npc', npc.id) ? 'ring-2 ring-amber-300/60' : ''">
-                                    <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-11 w-11 rounded-lg object-cover" />
+                                    <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-11 w-11 rounded-lg object-contain" />
                                     <div class="min-w-0 flex-1">
                                         <p class="truncate font-medium text-amber-50">{{ npc.name }}</p>
                                         <p class="text-xs text-emerald-100">ally NPC</p>
                                     </div>
-                                    <span v-if="isSpeaking('npc', npc.id)" class="text-xs text-amber-200">speaker</span>
+                                    <span v-if="isSpeaking('npc', npc.id)" class="text-xs text-amber-200">говорит</span>
                                 </article>
                             </div>
                         </aside>
@@ -2082,10 +2224,10 @@ onBeforeUnmount(() => {
                                 </div>
 
                                 <div class="hidden">
-                                    <article class="fantasy-card" :class="isSpeaking('character', scene.own_character?.id) ? 'ring-2 ring-amber-300/60' : ''">
+                                    <article class="theme-card" :class="isSpeaking('character', scene.own_character?.id) ? 'ring-2 ring-amber-300/60' : ''">
                                         <p class="fantasy-kicker">Ваш персонаж</p>
                                         <div v-if="scene.own_character" class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
-                                            <img v-if="scene.own_character.avatar_url" :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="h-20 w-20 rounded-lg object-cover" />
+                                            <img v-if="scene.own_character.avatar_url" :src="scene.own_character.avatar_url" :alt="scene.own_character.name" class="h-20 w-20 rounded-lg object-contain" />
                                             <div class="min-w-0 flex-1">
                                                 <p class="font-semibold text-amber-50">{{ scene.own_character.name }}</p>
                                                 <p class="text-sm text-stone-400">{{ scene.own_character.user_name }}</p>
@@ -2099,18 +2241,18 @@ onBeforeUnmount(() => {
                                         <p v-else class="mt-4 text-sm text-stone-400">Персонаж пока не создан.</p>
                                     </article>
 
-                                    <article class="fantasy-card">
+                                    <article class="theme-card">
                                         <p class="fantasy-kicker">Команда</p>
                                         <div v-if="scene.teammates.length || alliedNpcs.length" class="mt-4 space-y-3">
                                             <div v-for="teammate in scene.teammates" :key="`character-${teammate.id}`" class="flex items-center gap-3 rounded-lg border border-stone-600/40 bg-stone-950/60 px-3 py-2" :class="isSpeaking('character', teammate.id) ? 'ring-2 ring-amber-300/60' : ''">
-                                                <img v-if="teammate.avatar_url" :src="teammate.avatar_url" :alt="teammate.name" class="h-12 w-12 rounded-lg object-cover" />
+                                                <img v-if="teammate.avatar_url" :src="teammate.avatar_url" :alt="teammate.name" class="h-12 w-12 rounded-lg object-contain" />
                                                 <div>
                                                     <p class="font-medium text-amber-50">{{ teammate.name }}</p>
                                                     <p class="text-sm text-stone-400">{{ teammate.user_name }}</p>
                                                 </div>
                                             </div>
                                             <div v-for="npc in alliedNpcs" :key="`ally-${npc.id}`" class="flex items-center gap-3 rounded-lg border border-emerald-300/30 bg-emerald-400/10 px-3 py-2" :class="isSpeaking('npc', npc.id) ? 'ring-2 ring-amber-300/60' : ''">
-                                                <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-12 w-12 rounded-lg object-cover" />
+                                                <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-12 w-12 rounded-lg object-contain" />
                                                 <div>
                                                     <p class="font-medium text-amber-50">{{ npc.name }}</p>
                                                     <p class="text-sm text-emerald-100">Ally NPC</p>
@@ -2125,7 +2267,7 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div class="space-y-3">
-                        <section class="fantasy-panel p-4">
+                        <section class="theme-panel p-4">
                             <div class="flex items-start justify-between gap-4">
                                 <div>
                                     <h2 class="text-lg font-semibold text-amber-50">Броски кубиков</h2>
@@ -2183,7 +2325,7 @@ onBeforeUnmount(() => {
                             </form>
 
                             <div class="mt-6 space-y-3">
-                                <article v-for="roll in rolls.items" :key="roll.id" class="fantasy-card transition" :class="highlightedRollId === roll.id ? 'scale-[1.01] border-amber-300/50 bg-amber-300/10' : ''">
+                                <article v-for="roll in rolls.items" :key="roll.id" class="theme-card transition" :class="highlightedRollId === roll.id ? 'scale-[1.01] border-amber-300/50 bg-amber-300/10' : ''">
                                     <div class="flex items-start justify-between gap-4">
                                         <div>
                                             <p class="font-medium text-amber-50">{{ rollActorName(roll) }}</p>
@@ -2197,12 +2339,12 @@ onBeforeUnmount(() => {
                             </div>
                         </section>
 
-                        <section class="fantasy-panel p-4">
+                        <section class="theme-panel p-4">
                             <h2 class="text-lg font-semibold text-amber-50">Encountered NPC</h2>
                             <p class="fantasy-subtitle mt-1">Met NPC stay here; present ally NPC are shown with the party.</p>
                             <div v-if="encounteredNpcs.length" class="mt-4 space-y-3">
                                 <div v-for="npc in encounteredNpcs" :key="npc.id" class="flex items-center gap-3 rounded-lg border border-stone-600/40 bg-stone-950/60 px-4 py-3" :class="isSpeaking('npc', npc.id) ? 'ring-2 ring-amber-300/60' : ''">
-                                    <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-14 w-14 rounded-lg object-cover" />
+                                    <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-14 w-14 rounded-lg object-contain" />
                                     <div>
                                         <p class="font-medium text-amber-50">{{ npc.name }}</p>
                                         <p class="text-sm text-stone-400">{{ npc.type_label }}</p>
@@ -2212,7 +2354,7 @@ onBeforeUnmount(() => {
                             <p v-else class="mt-4 text-sm text-stone-400">No encountered NPC yet.</p>
                         </section>
 
-                        <section v-if="can_manage_sessions" class="fantasy-panel p-4">
+                        <section v-if="can_manage_sessions" class="theme-panel p-4">
                             <h2 class="text-lg font-semibold text-amber-50">Управление сценой</h2>
                             <form class="mt-6 space-y-5" @submit.prevent="submitScene">
                                 <div>
@@ -2249,14 +2391,14 @@ onBeforeUnmount(() => {
                     </div>
                 </section>
 
-                <section v-if="can_manage_sessions" class="fantasy-panel">
+                <section v-if="can_manage_sessions" class="theme-panel">
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                            <p class="fantasy-kicker">GM control tray</p>
+                            <p class="fantasy-kicker">Панель мастера</p>
                             <h2 class="text-lg font-semibold text-amber-50">Мастерская панель за ширмой</h2>
                             <p class="fantasy-subtitle mt-1">Игроки, фон, NPC и говорящий управляются из одного места без выхода из активной сессии.</p>
                         </div>
-                        <SecondaryButton :disabled="sceneForm.processing" @click="clearSceneSpeaker">Clear speaker</SecondaryButton>
+                        <SecondaryButton :disabled="sceneForm.processing" @click="clearSceneSpeaker">Сбросить говорящего</SecondaryButton>
                     </div>
 
                     <div class="mt-6 grid gap-4 xl:grid-cols-3">
@@ -2265,7 +2407,7 @@ onBeforeUnmount(() => {
                             <div class="mt-4 space-y-3">
                                 <article v-for="character in inventory.characters" :key="character.id" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-3" :class="isSpeaking('character', character.id) ? 'ring-2 ring-amber-300/60' : ''">
                                     <div class="flex items-center gap-3">
-                                        <img v-if="character.avatar_url" :src="character.avatar_url" :alt="character.name" class="h-12 w-12 rounded-lg object-cover" />
+                                        <img v-if="character.avatar_url" :src="character.avatar_url" :alt="character.name" class="h-12 w-12 rounded-lg object-contain" />
                                         <div class="min-w-0 flex-1">
                                             <p class="font-medium text-amber-50">{{ character.name }}</p>
                                             <p class="text-sm text-stone-400">{{ character.user_name }}</p>
@@ -2282,17 +2424,17 @@ onBeforeUnmount(() => {
 
                         <section class="rounded-lg border border-stone-600/40 bg-stone-950/45 p-4">
                             <div class="flex items-center justify-between gap-3">
-                                <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Backgrounds</h3>
+                                <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Фоны</h3>
                                 <button type="button" class="rounded-md border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-xs font-semibold text-violet-100 hover:bg-violet-400/15" @click="showMusicModal = true">
                                     Music
                                 </button>
                             </div>
                             <div class="mt-4 grid gap-3">
                                 <button type="button" class="rounded-lg border border-stone-600/40 bg-stone-950/60 px-3 py-2 text-left text-sm text-stone-200 transition hover:border-amber-300/40" :class="!scene.background ? 'ring-2 ring-amber-300/50' : ''" @click="setSceneBackground('')">
-                                    No background
+                                    Без фона
                                 </button>
                                 <button v-for="background in scene.controls.backgrounds" :key="background.id" type="button" class="overflow-hidden rounded-lg border border-stone-600/40 bg-stone-950/60 text-left transition hover:border-amber-300/40" :class="scene.background?.id === background.id ? 'ring-2 ring-amber-300/50' : ''" @click="setSceneBackground(background.id)">
-                                    <img v-if="background.image_url" :src="background.image_url" :alt="background.title" class="h-24 w-full object-cover" />
+                                    <img v-if="background.image_url" :src="background.image_url" :alt="background.title" class="h-24 w-full object-contain" />
                                     <span class="block px-3 py-2 text-sm text-amber-50">{{ background.title }}</span>
                                 </button>
                             </div>
@@ -2303,7 +2445,7 @@ onBeforeUnmount(() => {
                             <div class="mt-4 space-y-3">
                                 <article v-for="npc in scene.controls.npcs" :key="npc.id" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-3" :class="isSpeaking('npc', npc.id) ? 'ring-2 ring-amber-300/60' : ''">
                                     <div class="flex items-center gap-3">
-                                        <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-12 w-12 rounded-lg object-cover" />
+                                        <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-12 w-12 rounded-lg object-contain" />
                                         <div class="min-w-0 flex-1">
                                             <p class="font-medium text-amber-50">{{ npc.name }}</p>
                                             <p class="text-sm" :class="npc.type === 'ally' ? 'text-emerald-200' : 'text-stone-400'">
@@ -2335,12 +2477,12 @@ onBeforeUnmount(() => {
                     </div>
                 </section>
 
-                <section class="fantasy-panel">
+                <section class="theme-panel">
                     <h2 class="text-lg font-semibold text-amber-50">Инвентарь</h2>
                     <p class="fantasy-subtitle mt-1">{{ can_manage_sessions ? 'Управление инвентарем персонажей в активной сессии.' : 'Ваш инвентарь обновляется в реальном времени.' }}</p>
 
                     <div v-if="can_manage_sessions" class="mt-6 grid gap-4 xl:grid-cols-2">
-                        <article v-for="character in inventory.characters" :key="character.id" class="fantasy-card">
+                        <article v-for="character in inventory.characters" :key="character.id" class="theme-card">
                             <h3 class="text-base font-semibold text-amber-50">{{ character.name }}</h3>
                             <p class="text-sm text-stone-400">{{ character.user_name }}</p>
 
@@ -2377,7 +2519,7 @@ onBeforeUnmount(() => {
                                 <div v-for="item in character.inventory_items" :key="item.id" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
                                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                         <div class="flex gap-4">
-                                            <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="h-16 w-16 rounded-lg object-cover" />
+                                            <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="h-16 w-16 rounded-lg object-contain" />
                                             <div>
                                                 <p class="font-medium text-amber-50">{{ item.name }}</p>
                                                 <p class="mt-1 text-sm text-stone-400">Количество: {{ item.quantity }}</p>
@@ -2402,9 +2544,9 @@ onBeforeUnmount(() => {
 
                     <div v-else>
                         <div v-if="ownInventoryItems.length" class="mt-6 grid gap-3 md:grid-cols-2">
-                            <article v-for="item in ownInventoryItems" :key="item.id" class="fantasy-card">
+                            <article v-for="item in ownInventoryItems" :key="item.id" class="theme-card">
                                 <div class="flex gap-4">
-                                    <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="h-16 w-16 rounded-lg object-cover" />
+                                    <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="h-16 w-16 rounded-lg object-contain" />
                                     <div>
                                         <p class="font-medium text-amber-50">{{ item.name }}</p>
                                         <p class="mt-1 text-sm text-stone-400">Количество: {{ item.quantity }}</p>
@@ -2423,12 +2565,12 @@ onBeforeUnmount(() => {
             <div class="p-6">
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <p class="fantasy-kicker">NPC library</p>
+                        <p class="fantasy-kicker">Библиотека НПС</p>
                         <h2 class="text-xl font-semibold text-amber-50">Добавить NPC на сцену</h2>
                     </div>
                     <SecondaryButton @click="showNpcLibraryModal = false">Close</SecondaryButton>
                 </div>
-                <input v-model="npcSearch" type="search" class="fantasy-input mt-5 block w-full" placeholder="Search NPC" />
+                <input v-model="npcSearch" type="search" class="fantasy-input mt-5 block w-full" placeholder="Поиск НПС" />
                 <div class="mt-5 rounded-xl border border-amber-300/20 bg-stone-950/50 p-4">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div class="grid gap-4 sm:grid-cols-[minmax(0,10rem)_auto] sm:items-end">
@@ -2448,7 +2590,7 @@ onBeforeUnmount(() => {
                     <article v-for="npc in filteredNpcs" :key="`npc-library-${npc.id}`" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div class="flex items-center gap-3">
-                                <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-12 w-12 rounded-lg object-cover" />
+                                <img v-if="npc.avatar_url" :src="npc.avatar_url" :alt="npc.name" class="h-12 w-12 rounded-lg object-contain" />
                                 <div class="min-w-0">
                                     <p class="font-semibold text-amber-50">{{ npc.name }}</p>
                                     <p class="text-sm text-stone-400">{{ npc.type_label }}</p>
@@ -2469,7 +2611,7 @@ onBeforeUnmount(() => {
             <div class="p-6">
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <p class="fantasy-kicker">Scene music</p>
+                        <p class="fantasy-kicker">Музыка сцены</p>
                         <h2 class="text-xl font-semibold text-amber-50">Музыка сцены</h2>
                         <p class="mt-1 text-sm text-stone-400">GM/co-GM управляет общим источником и playback для всех участников.</p>
                     </div>
@@ -2540,7 +2682,7 @@ onBeforeUnmount(() => {
             <div class="p-6">
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <p class="fantasy-kicker">Scene background</p>
+                        <p class="fantasy-kicker">Фон сцены</p>
                         <h2 class="text-xl font-semibold text-amber-50">Загрузить фон</h2>
                     </div>
                     <SecondaryButton @click="showBackgroundUploadModal = false">Close</SecondaryButton>
@@ -2623,11 +2765,11 @@ onBeforeUnmount(() => {
         </Modal>
 
         <Modal :show="showCharacterModal" max-width="fit" @close="showCharacterModal = false">
-            <div class="w-[min(72rem,calc(100vw-2rem))] bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.12),transparent_24rem),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.10),transparent_22rem),rgba(28,25,23,0.98)] p-5 sm:p-6">
+            <div class="theme-panel w-[min(72rem,calc(100vw-2rem))] p-5 sm:p-6">
                 <div class="flex flex-col gap-5 border-b border-amber-300/15 pb-5 lg:flex-row lg:items-start lg:justify-between">
                     <div class="flex min-w-0 gap-4">
                         <div class="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-amber-300/20 bg-stone-950/70 ring-1 ring-white/5">
-                            <img v-if="activeCharacter?.avatar_url" :src="activeCharacter.avatar_url" :alt="activeCharacter.name" class="h-full w-full object-cover" />
+                            <img v-if="activeCharacter?.avatar_url" :src="activeCharacter.avatar_url" :alt="activeCharacter.name" class="h-full w-full object-contain" />
                             <div v-else class="grid h-full w-full place-items-center text-2xl font-semibold text-amber-100">{{ activeCharacter?.name?.charAt(0) ?? '?' }}</div>
                         </div>
                         <div class="min-w-0">
@@ -2664,7 +2806,7 @@ onBeforeUnmount(() => {
                 </div>
 
                 <form v-if="characterModalTab === 'stats' && can_manage_sessions" class="mt-6 max-h-[72vh] space-y-6 overflow-y-auto pr-1" @submit.prevent="updateGmCharacterSheet">
-                    <section class="fantasy-panel p-5">
+                    <section class="theme-panel p-5">
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Характеристики</h3>
                             <div class="text-xs uppercase tracking-[0.16em]" :class="gmAttributePointBalance.available < 0 ? 'text-rose-300' : 'text-stone-400'">
@@ -2698,7 +2840,7 @@ onBeforeUnmount(() => {
                             </label>
                         </div>
                     </section>
-                    <section class="fantasy-panel p-5">
+                    <section class="theme-panel p-5">
                         <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Навыки</h3>
                         <div class="mt-4 grid gap-3 md:grid-cols-2">
                             <label v-for="item in skillTemplateItems" :key="`gm-skill-${item.key}`" class="flex items-center justify-between gap-3 rounded-lg border border-stone-600/40 bg-stone-950/60 p-4 transition hover:border-teal-300/25">
@@ -2711,7 +2853,7 @@ onBeforeUnmount(() => {
                             </label>
                         </div>
                     </section>
-                    <section v-if="extraTemplateItems.length" class="fantasy-panel p-5">
+                    <section v-if="extraTemplateItems.length" class="theme-panel p-5">
                         <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Дополнительные поля</h3>
                         <div class="mt-4 grid gap-3 md:grid-cols-2">
                             <label v-for="item in extraTemplateItems" :key="`gm-extra-${item.key}`" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
@@ -2731,7 +2873,7 @@ onBeforeUnmount(() => {
                 </form>
 
                 <div v-else-if="characterModalTab === 'stats'" class="mt-6 max-h-[72vh] space-y-6 overflow-y-auto pr-1">
-                    <section class="fantasy-panel p-5">
+                    <section class="theme-panel p-5">
                         <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Характеристики</h3>
                         <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <div v-for="item in templateItems('attributes')" :key="item.key" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
@@ -2741,7 +2883,7 @@ onBeforeUnmount(() => {
                         </div>
                     </section>
 
-                    <section class="fantasy-panel p-5">
+                    <section class="theme-panel p-5">
                         <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Навыки</h3>
                         <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <div v-for="item in skillTemplateItems" :key="item.key" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
@@ -2751,7 +2893,7 @@ onBeforeUnmount(() => {
                         </div>
                     </section>
 
-                    <section v-if="extraTemplateItems.length" class="fantasy-panel p-5">
+                    <section v-if="extraTemplateItems.length" class="theme-panel p-5">
                         <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-200">Дополнительные поля</h3>
                         <div class="mt-4 grid gap-3 md:grid-cols-2">
                             <div v-for="item in extraTemplateItems" :key="item.key" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4">
@@ -2764,7 +2906,7 @@ onBeforeUnmount(() => {
 
                 <div v-else class="mt-6 max-h-[72vh] space-y-6 overflow-y-auto pr-1">
                     <section v-if="can_manage_sessions && activeCharacter" class="grid gap-4 lg:grid-cols-2">
-                        <form class="fantasy-panel p-5" @submit.prevent="submitCatalogItem(activeCharacter.id)">
+                        <form class="theme-panel p-5" @submit.prevent="submitCatalogItem(activeCharacter.id)">
                             <p class="fantasy-kicker">Каталог</p>
                             <h3 class="mt-2 text-xl font-semibold text-amber-50">Выдать предмет</h3>
                             <div class="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-end">
@@ -2783,7 +2925,7 @@ onBeforeUnmount(() => {
                             <PrimaryButton class="mt-4" :disabled="inventoryForms[activeCharacter.id].processing">Добавить</PrimaryButton>
                         </form>
 
-                        <form class="fantasy-panel p-5" @submit.prevent="submitCustomItem(activeCharacter.id)">
+                        <form class="theme-panel p-5" @submit.prevent="submitCustomItem(activeCharacter.id)">
                             <p class="fantasy-kicker">Свободный предмет</p>
                             <h3 class="mt-2 text-xl font-semibold text-amber-50">Создать и выдать</h3>
                             <div class="mt-5 space-y-3">
@@ -2811,7 +2953,7 @@ onBeforeUnmount(() => {
                         <article v-for="item in activeCharacterInventory" :key="item.id" class="rounded-lg border border-stone-600/40 bg-stone-950/60 p-4 transition hover:border-amber-300/25">
                             <div class="flex gap-4">
                                 <div class="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-stone-900/80">
-                                    <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="h-full w-full object-cover" />
+                                    <img v-if="item.image_url" :src="item.image_url" :alt="item.name" class="h-full w-full object-contain" />
                                     <div v-else class="grid h-full w-full place-items-center text-xs uppercase tracking-[0.18em] text-stone-500">Предмет</div>
                                 </div>
                                 <div class="min-w-0 flex-1">
@@ -2853,5 +2995,6 @@ onBeforeUnmount(() => {
                 <p v-else class="text-sm text-stone-400">Изображение не загружено.</p>
             </div>
         </Modal>
-    </AuthenticatedLayout>
+    </GameThemeLayout>
 </template>
+

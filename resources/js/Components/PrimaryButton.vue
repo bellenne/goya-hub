@@ -1,7 +1,20 @@
+<script setup>
+import { computed } from 'vue';
+import { usePage } from '@inertiajs/vue3';
+import ClassicPrimaryButton from '@/Components/Themes/Classic/PrimaryButton.vue';
+import ModernPrimaryButton from '@/Components/Themes/Modern/PrimaryButton.vue';
+
+const page = usePage();
+
+const component = computed(() => {
+    return (page.props.auth?.user?.theme_preference ?? 'classic') === 'modern'
+        ? ModernPrimaryButton
+        : ClassicPrimaryButton;
+});
+</script>
+
 <template>
-    <button
-        class="inline-flex items-center justify-center rounded-md border border-amber-200/30 bg-amber-600 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-amber-50 shadow-[0_10px_24px_rgba(146,64,14,0.25)] transition duration-150 ease-in-out hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300/60 focus:ring-offset-2 focus:ring-offset-stone-950 active:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
-    >
+    <component :is="component" v-bind="$attrs">
         <slot />
-    </button>
+    </component>
 </template>

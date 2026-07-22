@@ -2,7 +2,33 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import ThemeIcon from '@/Components/ThemeIcon.vue';
 import { Head, Link } from '@inertiajs/vue3';
+
+const commandCards = [
+    {
+        kicker: 'Игры',
+        title: 'Кампании и роли',
+        text: 'Открывайте миры, где вы мастер, со-мастер или игрок.',
+        icon: '/storage/ui/icons/Sessions.png',
+        href: () => route('games.index'),
+    },
+    {
+        kicker: 'Сессии',
+        title: 'Игровой стол',
+        text: 'Переходите из кампании к активной сцене, участникам и подготовке.',
+        icon: '/storage/ui/icons/Settings.png',
+        iconName: 'management',
+        href: () => route('games.index'),
+    },
+    {
+        kicker: 'Контент',
+        title: 'База мира',
+        text: 'Персонажи, НПС, предметы, фоны и тикеты живут внутри выбранной игры.',
+        icon: '/storage/ui/icons/Notes.png',
+        href: () => route('games.index'),
+    },
+];
 </script>
 
 <template>
@@ -12,10 +38,10 @@ import { Head, Link } from '@inertiajs/vue3';
         <template #header>
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <p class="fantasy-kicker">Главная</p>
-                    <h1 class="fantasy-title text-3xl">Центр управления партией</h1>
+                    <p class="fantasy-kicker">Панель мастера</p>
+                    <h1 class="fantasy-title text-3xl">Центр управления</h1>
                     <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
-                        Основной вход в приложение: быстрый переход к играм, сессиям и ключевым игровым сущностям.
+                        Рабочий вход в кампании, сессии и игровые материалы.
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-3">
@@ -26,89 +52,94 @@ import { Head, Link } from '@inertiajs/vue3';
             </div>
         </template>
 
-        <div class="px-4 pb-10 pt-6 sm:px-6 lg:px-8">
-            <div class="mx-auto max-w-7xl space-y-6">
-                <section class="relative overflow-hidden rounded-[2rem] border border-amber-300/15 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.16),transparent_24rem),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.14),transparent_24rem),linear-gradient(145deg,rgba(28,25,23,0.98),rgba(12,10,9,0.94))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.42)] ring-1 ring-white/5 sm:p-8">
-                    <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:38px_38px] opacity-30" />
-                    <div class="relative grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                        <div class="space-y-5">
-                            <div class="rounded-[1.5rem] border border-white/10 bg-stone-950/45 p-5 backdrop-blur">
-                                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">Игровая база</p>
-                                <h2 class="mt-3 text-3xl font-semibold text-amber-50">Всё важное под рукой</h2>
-                                <p class="mt-3 max-w-2xl text-sm leading-7 text-stone-300">
-                                    Отсюда удобно начать работу: открыть свои игры, перейти к активным сессиям и быстро вернуться к контенту кампании.
-                                </p>
-                            </div>
-
-                            <div class="grid gap-4 sm:grid-cols-3">
-                                <article class="rounded-[1.35rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur">
-                                    <p class="text-sm text-stone-400">Игры</p>
-                                    <p class="mt-2 text-3xl font-semibold text-white">GM</p>
-                                    <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">Кампании и состав</p>
-                                </article>
-                                <article class="rounded-[1.35rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur">
-                                    <p class="text-sm text-stone-400">Сессии</p>
-                                    <p class="mt-2 text-3xl font-semibold text-white">RT</p>
-                                    <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">Realtime сцена</p>
-                                </article>
-                                <article class="rounded-[1.35rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur">
-                                    <p class="text-sm text-stone-400">Контент</p>
-                                    <p class="mt-2 text-3xl font-semibold text-white">NPC</p>
-                                    <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">Фоны и предметы</p>
-                                </article>
+        <div class="theme-page">
+            <div class="theme-stack">
+                <section class="theme-panel">
+                    <div class="theme-panel-head">
+                        <div class="flex min-w-0 items-start gap-3">
+                            <span class="gm-panel-icon">
+                                <ThemeIcon src="/storage/ui/icons/Viewing.png" name="viewing" />
+                            </span>
+                            <div class="min-w-0">
+                                <p class="gm-kicker">Обзор платформы</p>
+                                <h2 class="theme-panel-title">Рабочий стол GoYa Table</h2>
                             </div>
                         </div>
-
-                        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-                            <article class="rounded-[1.5rem] border border-amber-300/15 bg-stone-950/55 p-5 backdrop-blur">
-                                <p class="text-sm font-semibold text-amber-50">Быстрый старт</p>
-                                <p class="mt-3 text-sm leading-6 text-stone-400">
-                                    Если у вас уже есть игра, переходите к списку игр. Если нет, создайте новую кампанию и настройте шаблон листа персонажа.
-                                </p>
-                            </article>
-                            <article class="rounded-[1.5rem] border border-teal-300/15 bg-stone-950/55 p-5 backdrop-blur">
-                                <p class="text-sm font-semibold text-teal-50">Текущий стек</p>
-                                <p class="mt-3 text-sm leading-6 text-stone-400">
-                                    Laravel, Vue 3, PostgreSQL, Redis и Reverb уже собраны в едином игровом интерфейсе.
-                                </p>
-                            </article>
+                        <div class="flex flex-wrap gap-2">
+                            <Link :href="route('games.index')">
+                                <SecondaryButton>Все кампании</SecondaryButton>
+                            </Link>
                         </div>
+                    </div>
+
+                    <div class="relative z-10 mt-5 grid gap-4 md:grid-cols-3">
+                        <article class="theme-list-row">
+                            <p class="theme-stat-label">Игры</p>
+                            <p class="mt-2 text-sm leading-6 text-[#d7c5a4]">Кампании, роли и доступные миры.</p>
+                        </article>
+                        <article class="theme-list-row">
+                            <p class="theme-stat-label">Сессии</p>
+                            <p class="mt-2 text-sm leading-6 text-[#d7c5a4]">Лобби и активные игровые столы.</p>
+                        </article>
+                        <article class="theme-list-row">
+                            <p class="theme-stat-label">Контент</p>
+                            <p class="mt-2 text-sm leading-6 text-[#d7c5a4]">Персонажи, НПС, предметы и фоны внутри игры.</p>
+                        </article>
                     </div>
                 </section>
 
-                <section class="grid gap-4 lg:grid-cols-3">
-                    <article class="rounded-[1.6rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
-                        <p class="fantasy-kicker">Игры</p>
-                        <h2 class="mt-2 text-2xl font-semibold text-amber-50">Кампании и участники</h2>
-                        <p class="mt-3 text-sm leading-6 text-stone-400">
-                            Управление составом игры, ролями, приглашениями и общим входом в кампанию.
-                        </p>
-                        <Link :href="route('games.index')" class="mt-5 inline-flex">
-                            <PrimaryButton>Перейти к играм</PrimaryButton>
-                        </Link>
-                    </article>
+                <section class="theme-grid theme-grid-main">
+                    <div class="theme-panel">
+                        <div class="theme-panel-head">
+                            <div>
+                                <p class="gm-kicker">Маршруты</p>
+                                <h2 class="theme-panel-title">Основные разделы</h2>
+                            </div>
+                        </div>
 
-                    <article class="rounded-[1.6rem] border border-teal-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
-                        <p class="fantasy-kicker">Сессии</p>
-                        <h2 class="mt-2 text-2xl font-semibold text-teal-50">Игровой стол</h2>
-                        <p class="mt-3 text-sm leading-6 text-stone-400">
-                            Активная сцена, фон, NPC, говорящий, броски кубиков и синхронизация игроков в realtime.
-                        </p>
-                        <Link :href="route('games.index')" class="mt-5 inline-flex">
-                            <SecondaryButton>Открыть через игру</SecondaryButton>
-                        </Link>
-                    </article>
+                        <div class="theme-list-grid">
+                            <Link
+                                v-for="card in commandCards"
+                                :key="card.title"
+                                :href="card.href()"
+                                class="theme-card theme-card-interactive block"
+                            >
+                                <div class="flex items-start gap-3">
+                                    <span class="gm-panel-icon">
+                                        <ThemeIcon :src="card.icon" :name="card.iconName ?? ''" />
+                                    </span>
+                                    <div class="min-w-0">
+                                        <p class="gm-kicker">{{ card.kicker }}</p>
+                                        <h3 class="mt-1 text-lg font-semibold text-[#fff1c8]">{{ card.title }}</h3>
+                                        <p class="mt-3 text-sm leading-6 text-[#b8a685]">{{ card.text }}</p>
+                                    </div>
+                                </div>
+                            </Link>
+                        </div>
+                    </div>
 
-                    <article class="rounded-[1.6rem] border border-violet-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
-                        <p class="fantasy-kicker">Контент</p>
-                        <h2 class="mt-2 text-2xl font-semibold text-violet-50">Подготовка мира</h2>
-                        <p class="mt-3 text-sm leading-6 text-stone-400">
-                            NPC, предметы, фоны и шаблоны листов персонажей собираются внутри конкретной игры.
-                        </p>
-                        <Link :href="route('games.index')" class="mt-5 inline-flex">
-                            <SecondaryButton>Открыть игры</SecondaryButton>
-                        </Link>
-                    </article>
+                    <aside class="theme-panel">
+                        <div class="theme-panel-head">
+                            <div>
+                                <p class="gm-kicker">Порядок работы</p>
+                                <h2 class="theme-panel-title">От мира к сцене</h2>
+                            </div>
+                        </div>
+                        <div class="theme-list">
+                            <div class="theme-list-row">
+                                <p class="theme-stat-label">1. Кампания</p>
+                                <p class="mt-2 text-sm leading-6 text-[#d7c5a4]">Создайте игру или откройте существующую.</p>
+                            </div>
+                            <div class="theme-list-row">
+                                <p class="theme-stat-label">2. Материалы</p>
+                                <p class="mt-2 text-sm leading-6 text-[#d7c5a4]">Подготовьте персонажей, НПС, предметы и фоны.</p>
+                            </div>
+                            <div class="theme-list-row">
+                                <p class="theme-stat-label">3. Сессия</p>
+                                <p class="mt-2 text-sm leading-6 text-[#d7c5a4]">Запустите стол и ведите сцену из панели мастера.</p>
+                            </div>
+                        </div>
+                    </aside>
                 </section>
             </div>
         </div>

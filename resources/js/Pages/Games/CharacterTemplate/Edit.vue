@@ -1,6 +1,6 @@
-﻿
+
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import GameThemeLayout from '@/Layouts/GameThemeLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
@@ -251,7 +251,7 @@ const submit = () => {
 <template>
     <Head :title="`Шаблон листа персонажа - ${game.name}`" />
 
-    <AuthenticatedLayout>
+    <GameThemeLayout :game="game" section="Лист персонажа" :title="game.name">
         <template #header>
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
@@ -270,66 +270,29 @@ const submit = () => {
             </div>
         </template>
 
-        <div class="px-4 pb-10 pt-6 sm:px-6 lg:px-8">
-            <div class="mx-auto max-w-7xl space-y-6">
-                <section class="relative overflow-hidden rounded-[2rem] border border-amber-300/15 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.16),transparent_24rem),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.14),transparent_24rem),linear-gradient(145deg,rgba(28,25,23,0.98),rgba(12,10,9,0.94))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.42)] ring-1 ring-white/5 sm:p-8">
-                    <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:38px_38px] opacity-30" />
-                    <div class="relative grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-                        <div class="space-y-5">
-                            <div class="rounded-[1.5rem] border border-white/10 bg-stone-950/45 p-5 backdrop-blur">
-                                <div class="flex flex-wrap items-start justify-between gap-4">
-                                    <div>
-                                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">Сцена мастера</p>
-                                        <h2 class="mt-3 text-3xl font-semibold text-amber-50">Настройка листа персонажа</h2>
-                                        <p class="mt-3 max-w-2xl text-sm leading-6 text-stone-300">Начните с базовых характеристик, затем добавьте навыки и сюжетные поля под ваш сеттинг.</p>
-                                    </div>
-                                    <div class="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-                                        Можно оставить шаблон пустым и собрать с нуля
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                                <article class="rounded-[1.35rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08]">
-                                    <p class="text-sm text-stone-400">Характеристики</p>
-                                    <p class="mt-2 text-3xl font-semibold text-white">{{ form.attributes.items.length }}</p>
-                                </article>
-                                <article class="rounded-[1.35rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08]">
-                                    <p class="text-sm text-stone-400">Навыки и поднавыки</p>
-                                    <p class="mt-2 text-3xl font-semibold text-white">{{ totalSkillCount }}</p>
-                                </article>
-                                <article class="rounded-[1.35rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08]">
-                                    <p class="text-sm text-stone-400">Активны по умолчанию</p>
-                                    <p class="mt-2 text-3xl font-semibold text-white">{{ activeByDefaultCount }}</p>
-                                </article>
-                                <article class="rounded-[1.35rem] border border-white/10 bg-white/[0.05] p-4 backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08]">
-                                    <p class="text-sm text-stone-400">Поля для бросков</p>
-                                    <p class="mt-2 text-3xl font-semibold text-white">{{ rollEnabledCount }}</p>
-                                </article>
-                            </div>
+        <div class="theme-page">
+            <div class="theme-stack">
+                <section class="theme-panel">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <p class="fantasy-kicker">Редактор шаблона</p>
+                            <h2 class="theme-panel-title mt-2">Настройка листа персонажа</h2>
+                            <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-400">Структура листа, которую игроки и мастер используют во время партии.</p>
                         </div>
-
-                        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-                            <article class="rounded-[1.5rem] border border-amber-300/15 bg-stone-950/55 p-5 backdrop-blur">
-                                <p class="text-sm font-semibold text-amber-50">Подсказка для старта</p>
-                                <p class="mt-3 text-sm leading-6 text-stone-400">Для MVP обычно хватает 3-6 характеристик, списка ключевых навыков и нескольких сюжетных полей вроде происхождения, роли или заметок.</p>
-                            </article>
-                            <article class="rounded-[1.5rem] border border-teal-300/15 bg-stone-950/55 p-5 backdrop-blur">
-                                <p class="text-sm font-semibold text-teal-50">Практический совет</p>
-                                <p class="mt-3 text-sm leading-6 text-stone-400">Если лист должен читаться быстро во время сессии, держите названия короткими, а числовые поля оставляйте только там, где они реально участвуют в бросках.</p>
-                                <div
-                                    v-if="page.props.flash.success"
-                                    class="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200"
-                                >
-                                    {{ page.props.flash.success }}
-                                </div>
-                            </article>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="gm-badge">{{ form.attributes.items.length }} характеристик</span>
+                            <span class="gm-badge">{{ totalSkillCount }} навыков</span>
+                            <span class="gm-badge">{{ activeByDefaultCount }} активны</span>
+                            <span class="gm-badge">{{ rollEnabledCount }} для бросков</span>
                         </div>
+                    </div>
+                    <div v-if="page.props.flash.success" class="gm-alert gm-alert-success mt-5">
+                        {{ page.props.flash.success }}
                     </div>
                 </section>
                 <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
                     <section class="space-y-6">
-                        <article class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <article class="theme-panel">
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div>
                                     <p class="fantasy-kicker">Характеристики</p>
@@ -339,7 +302,7 @@ const submit = () => {
                                 <PrimaryButton type="button" @click="addAttribute">Добавить характеристику</PrimaryButton>
                             </div>
 
-                            <div class="mt-5 grid gap-4 rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-5 md:grid-cols-[minmax(0,1fr)_14rem] md:items-end">
+                            <div class="mt-5 grid gap-4 theme-card md:grid-cols-[minmax(0,1fr)_14rem] md:items-end">
                                 <div>
                                     <p class="text-sm font-medium text-amber-50">Пул свободных очков</p>
                                     <p class="mt-1 text-sm leading-6 text-stone-400">Количество очков, которое игрок сможет распределить при создании персонажа.</p>
@@ -355,7 +318,7 @@ const submit = () => {
                                 <article
                                     v-for="(item, index) in form.attributes.items"
                                     :key="item.key || index"
-                                    class="rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-amber-300/30 hover:shadow-[0_0_40px_rgba(251,191,36,0.08)]"
+                                    class="theme-card theme-card-interactive"
                                 >
                                     <div class="flex flex-wrap items-start justify-between gap-4">
                                         <div class="grid min-w-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_7rem_7rem_7rem]">
@@ -379,23 +342,23 @@ const submit = () => {
                                         </div>
                                         <button
                                             type="button"
-                                            class="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-400/20"
+                                            class="gm-button gm-button-danger px-3 py-2 text-sm"
                                             @click="removeAt(form.attributes.items, index)"
                                         >
                                             Удалить
                                         </button>
                                     </div>
 
-                                    <div class="mt-4 grid gap-4 rounded-[1.15rem] border border-stone-700/50 bg-stone-950/60 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem] md:items-end">
-                                        <label class="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-200 transition hover:bg-white/[0.06]">
-                                            <input v-model="item.roll.enabled" type="checkbox" class="rounded border-amber-300/20 bg-stone-950 text-amber-500" />
+                                    <div class="theme-card mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem] md:items-end">
+                                        <label class="theme-list-row flex items-center gap-3 text-sm text-stone-200">
+                                            <input v-model="item.roll.enabled" type="checkbox" class="rounded border-amber-300/30 bg-transparent text-amber-500" />
                                             Участвует в бросках
                                         </label>
-                                        <label class="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-200 transition hover:bg-white/[0.06]">
+                                        <label class="theme-list-row flex items-center gap-3 text-sm text-stone-200">
                                             <input
                                                 :checked="item.player_editable === false"
                                                 type="checkbox"
-                                                class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
+                                                class="rounded border-amber-300/30 bg-transparent text-amber-500"
                                                 @change="item.player_editable = !$event.target.checked"
                                             />
                                             Запретить игрокам редактирование
@@ -409,13 +372,13 @@ const submit = () => {
                                     </div>
                                 </article>
 
-                                <p v-if="!form.attributes.items.length" class="rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-3 text-sm text-stone-500">
+                                <p v-if="!form.attributes.items.length" class="theme-empty">
                                     Добавьте хотя бы одну характеристику.
                                 </p>
                             </div>
                         </article>
 
-                        <article class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <article class="theme-panel">
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div>
                                     <p class="fantasy-kicker">Дополнительно</p>
@@ -429,7 +392,7 @@ const submit = () => {
                                 <article
                                     v-for="(field, index) in form.extra_fields"
                                     :key="field.key || index"
-                                    class="rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-amber-300/30"
+                                    class="theme-card theme-card-interactive"
                                 >
                                     <div class="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_11rem_auto] lg:items-start">
                                         <div>
@@ -446,7 +409,7 @@ const submit = () => {
                                         <div class="flex items-center justify-end pt-7">
                                             <button
                                                 type="button"
-                                                class="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-400/20"
+                                                class="gm-button gm-button-danger px-3 py-2 text-sm"
                                                 @click="removeAt(form.extra_fields, index)"
                                             >
                                                 Удалить
@@ -455,18 +418,18 @@ const submit = () => {
                                     </div>
 
                                     <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)_7rem_7rem] xl:items-end">
-                                        <label class="min-w-0 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-300 transition hover:bg-white/[0.06]">
+                                        <label class="theme-list-row min-w-0 text-sm text-stone-300">
                                             <span class="flex min-w-0 items-center gap-2">
-                                            <input v-model="field.required" type="checkbox" class="rounded border-amber-300/20 bg-stone-950 text-amber-500" />
+                                            <input v-model="field.required" type="checkbox" class="rounded border-amber-300/30 bg-transparent text-amber-500" />
                                             <span class="min-w-0 break-words">Обязательное поле</span>
                                             </span>
                                         </label>
-                                        <label class="min-w-0 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-stone-300 transition hover:bg-white/[0.06]">
+                                        <label class="theme-list-row min-w-0 text-sm text-stone-300">
                                             <span class="flex min-w-0 items-center gap-2">
                                             <input
                                                 :checked="field.player_editable === false"
                                                 type="checkbox"
-                                                class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
+                                                class="rounded border-amber-300/30 bg-transparent text-amber-500"
                                                 @change="field.player_editable = !$event.target.checked"
                                             />
                                             <span class="min-w-0 break-words">Запретить игрокам редактирование</span>
@@ -493,7 +456,7 @@ const submit = () => {
                                     </div>
                                 </article>
 
-                                <p v-if="!form.extra_fields.length" class="rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-3 text-sm text-stone-500">
+                                <p v-if="!form.extra_fields.length" class="theme-empty">
                                     Дополнительные поля пока не добавлены.
                                 </p>
                             </div>
@@ -501,12 +464,12 @@ const submit = () => {
                     </section>
 
                     <section class="space-y-6">
-                        <article class="rounded-[1.75rem] border border-teal-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <article class="theme-panel">
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div>
                                     <p class="fantasy-kicker text-teal-200/80">Навыки</p>
-                                    <h2 class="mt-2 text-2xl font-semibold text-teal-50">Навыки как on/off-состояния</h2>
-                                    <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-400">Оставляйте в списке только те навыки, по которым GM и игроки действительно будут быстро ориентироваться за столом.</p>
+                                    <h2 class="mt-2 text-2xl font-semibold text-teal-50">Навыки как переключатели</h2>
+                                    <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-400">Оставляйте в списке только те навыки, по которым мастер и игроки действительно будут быстро ориентироваться за столом.</p>
                                 </div>
                                 <PrimaryButton type="button" @click="addSkill">Добавить навык</PrimaryButton>
                             </div>
@@ -515,7 +478,7 @@ const submit = () => {
                                 <article
                                     v-for="(skill, skillIndex) in form.skills.items"
                                     :key="skill.key || skillIndex"
-                                    class="rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-teal-300/30 hover:shadow-[0_0_40px_rgba(45,212,191,0.08)]"
+                                    class="theme-card theme-card-interactive"
                                 >
                                     <div class="flex flex-wrap items-start justify-between gap-4">
                                         <div class="min-w-0 flex-1">
@@ -524,23 +487,23 @@ const submit = () => {
                                             <InputError class="mt-2" :message="form.errors[`skills.items.${skillIndex}.label`]" />
                                         </div>
                                         <div class="flex flex-wrap items-center gap-3 pt-7">
-                                            <label class="inline-flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-stone-200 transition hover:bg-white/[0.08]">
+                                            <label class="gm-badge inline-flex items-center gap-3 text-sm text-stone-200">
                                                 <input v-model="skill.default" type="checkbox" class="peer sr-only" />
-                                                <span class="relative h-6 w-11 rounded-full bg-stone-700/80 transition after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:bg-teal-500/70 peer-checked:after:translate-x-5" />
+                                                <span class="gm-toggle-track" />
                                                 Есть по умолчанию
                                             </label>
-                                            <label class="inline-flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-stone-200 transition hover:bg-white/[0.08]">
+                                            <label class="gm-badge inline-flex items-center gap-3 text-sm text-stone-200">
                                                 <input
                                                     :checked="skill.player_editable === false"
                                                     type="checkbox"
-                                                    class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
+                                                    class="rounded border-amber-300/30 bg-transparent text-amber-500"
                                                     @change="skill.player_editable = !$event.target.checked"
                                                 />
                                                 Запретить игрокам
                                             </label>
                                             <button
                                                 type="button"
-                                                class="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-400/20"
+                                                class="gm-button gm-button-danger px-3 py-2 text-sm"
                                                 @click="removeAt(form.skills.items, skillIndex)"
                                             >
                                                 Удалить
@@ -548,7 +511,7 @@ const submit = () => {
                                         </div>
                                     </div>
 
-                                    <div class="mt-4 rounded-[1.2rem] border border-stone-700/50 bg-stone-950/60 p-4">
+                                    <div class="theme-card mt-4">
                                         <div class="flex flex-wrap items-center justify-between gap-3">
                                             <div>
                                                 <p class="text-sm font-semibold text-teal-50">Поднавыки</p>
@@ -561,29 +524,29 @@ const submit = () => {
                                             <div
                                                 v-for="(subskill, subIndex) in skill.subskills"
                                                 :key="subskill.key || subIndex"
-                                                class="flex flex-wrap items-center gap-3 rounded-2xl border border-stone-700/50 bg-stone-900/75 px-4 py-3"
+                                                class="theme-list-row flex flex-wrap items-center gap-3"
                                             >
                                                 <div class="min-w-[14rem] flex-1">
                                                     <TextInput v-model="subskill.label" class="block w-full" placeholder="Название поднавыка" />
                                                     <InputError class="mt-2" :message="form.errors[`skills.items.${skillIndex}.subskills.${subIndex}.label`]" />
                                                 </div>
-                                                <label class="inline-flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-stone-200 transition hover:bg-white/[0.08]">
+                                                <label class="gm-badge inline-flex items-center gap-3 text-sm text-stone-200">
                                                     <input v-model="subskill.default" type="checkbox" class="peer sr-only" />
-                                                    <span class="relative h-6 w-11 rounded-full bg-stone-700/80 transition after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:bg-teal-500/70 peer-checked:after:translate-x-5" />
+                                                    <span class="gm-toggle-track" />
                                                     Активен по умолчанию
                                                 </label>
-                                                <label class="inline-flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-stone-200 transition hover:bg-white/[0.08]">
+                                                <label class="gm-badge inline-flex items-center gap-3 text-sm text-stone-200">
                                                     <input
                                                         :checked="subskill.player_editable === false"
                                                         type="checkbox"
-                                                        class="rounded border-amber-300/20 bg-stone-950 text-amber-500"
+                                                        class="rounded border-amber-300/30 bg-transparent text-amber-500"
                                                         @change="subskill.player_editable = !$event.target.checked"
                                                     />
                                                     Запретить игрокам
                                                 </label>
                                                 <button
                                                     type="button"
-                                                    class="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-400/20"
+                                                    class="gm-button gm-button-danger px-3 py-2 text-sm"
                                                     @click="removeAt(skill.subskills, subIndex)"
                                                 >
                                                     Удалить
@@ -591,13 +554,13 @@ const submit = () => {
                                             </div>
                                         </div>
 
-                                        <p v-else class="mt-4 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-3 text-sm text-stone-500">
+                                        <p v-else class="mt-4 theme-empty">
                                             Пока без поднавыков.
                                         </p>
                                     </div>
                                 </article>
 
-                                <p v-if="!form.skills.items.length" class="rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-3 text-sm text-stone-500">
+                                <p v-if="!form.skills.items.length" class="theme-empty">
                                     Добавьте навыки, если они нужны в вашей системе.
                                 </p>
                             </div>
@@ -606,5 +569,5 @@ const submit = () => {
                 </div>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </GameThemeLayout>
 </template>

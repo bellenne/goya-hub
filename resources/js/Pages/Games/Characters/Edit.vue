@@ -1,5 +1,5 @@
-﻿<script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+<script setup>
+import GameThemeLayout from '@/Layouts/GameThemeLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
@@ -133,7 +133,7 @@ const modifierPreview = (item, value) => {
 <template>
     <Head :title="`${character ? 'Редактирование' : 'Создание'} персонажа`" />
 
-    <AuthenticatedLayout>
+    <GameThemeLayout :game="game" section="Мой персонаж" :title="game.name">
         <template #header>
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
@@ -154,66 +154,54 @@ const modifierPreview = (item, value) => {
             </div>
         </template>
 
-        <div class="px-4 pb-10 pt-6 sm:px-6 lg:px-8">
-            <div class="mx-auto max-w-7xl space-y-6">
-                <section class="relative overflow-hidden rounded-[2rem] border border-amber-300/15 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.16),transparent_24rem),radial-gradient(circle_at_bottom_right,rgba(45,212,191,0.14),transparent_24rem),linear-gradient(145deg,rgba(28,25,23,0.98),rgba(12,10,9,0.94))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.42)] ring-1 ring-white/5 sm:p-8">
-                    <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:38px_38px] opacity-30" />
-                    <div class="relative grid gap-4 lg:grid-cols-4">
-                        <article class="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur">
-                            <p class="text-sm text-stone-400">Характеристики</p>
-                            <p class="mt-2 text-3xl font-semibold text-white">{{ template.attributes.items.length }}</p>
-                            <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">
-                                Осталось {{ attributePointBalance.available }} оч.
+        <div class="theme-page">
+            <div class="theme-stack">
+                <section class="theme-panel">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <p class="fantasy-kicker">{{ character ? 'Редактирование листа' : 'Создание листа' }}</p>
+                            <h2 class="theme-panel-title mt-2">Персонаж партии</h2>
+                            <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
+                                {{ back_to_session ? `Лист для сессии «${back_to_session.title}».` : 'Основные данные, характеристики, навыки и дополнительные поля.' }}
                             </p>
-                        </article>
-                        <article class="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur">
-                            <p class="text-sm text-stone-400">Навыки</p>
-                            <p class="mt-2 text-3xl font-semibold text-white">{{ enabledSkillCount }} / {{ skillCount }}</p>
-                            <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">Активные умения персонажа</p>
-                        </article>
-                        <article class="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur">
-                            <p class="text-sm text-stone-400">Доп. поля</p>
-                            <p class="mt-2 text-3xl font-semibold text-white">{{ template.extra_fields.length }}</p>
-                            <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">Биография, ресурсы и заметки</p>
-                        </article>
-                        <article class="rounded-[1.4rem] border border-white/10 bg-white/[0.05] p-5 backdrop-blur">
-                            <p class="text-sm text-stone-400">Статус</p>
-                            <p class="mt-2 text-lg font-semibold text-amber-50">{{ character ? 'Лист существует' : 'Новый лист' }}</p>
-                            <div
-                                v-if="page.props.flash.success"
-                                class="mt-3 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-200"
-                            >
-                                {{ page.props.flash.success }}
-                            </div>
-                        </article>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="gm-badge">{{ template.attributes.items.length }} характеристик</span>
+                            <span class="gm-badge">{{ enabledSkillCount }} / {{ skillCount }} навыков</span>
+                            <span class="gm-badge">{{ template.extra_fields.length }} полей</span>
+                            <span class="gm-badge">{{ character ? 'Лист существует' : 'Новый лист' }}</span>
+                        </div>
+                    </div>
+                    <div v-if="page.props.flash.success" class="gm-alert gm-alert-success mt-5">
+                        {{ page.props.flash.success }}
                     </div>
                 </section>
 
                 <div class="grid gap-6 xl:grid-cols-[1.45fr_0.75fr]">
                     <div class="space-y-6">
-                        <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <section class="theme-panel">
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div>
                                     <p class="fantasy-kicker">Основа</p>
                                     <h2 class="mt-2 text-2xl font-semibold text-amber-50">Личность персонажа</h2>
                                 </div>
-                                <p class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.18em] text-stone-400">
+                                <p class="gm-badge">
                                     Имя, происхождение, портрет и заметки
                                 </p>
                             </div>
 
                             <div class="mt-6 grid gap-6 lg:grid-cols-[0.82fr_1.18fr]">
-                                <div class="rounded-[1.4rem] border border-stone-700/60 bg-stone-900/75 p-5">
+                                <div class="theme-card">
                                     <p class="text-sm font-medium text-stone-300">Портрет</p>
                                     <div class="mt-4 flex justify-center">
                                         <div
-                                            class="flex h-56 w-full max-w-[18rem] items-center justify-center overflow-hidden rounded-[1.6rem] border border-dashed border-stone-600/50 bg-[radial-gradient(circle_at_top,rgba(245,158,11,0.12),transparent_55%),rgba(10,10,9,0.88)]"
+                                            class="flex h-56 w-full max-w-[18rem] items-center justify-center overflow-hidden theme-media border-dashed"
                                         >
                                             <img
                                                 v-if="avatarPreviewUrl"
                                                 :src="avatarPreviewUrl"
                                                 alt="Портрет персонажа"
-                                                class="h-full w-full object-cover"
+                                                class="h-full w-full object-contain"
                                             />
                                             <div v-else class="px-6 text-center text-xs uppercase tracking-[0.24em] text-stone-500">
                                                 Портрет не выбран
@@ -226,7 +214,7 @@ const modifierPreview = (item, value) => {
                                             id="avatar"
                                             type="file"
                                             accept="image/*"
-                                            class="mt-2 block w-full rounded-2xl border border-white/10 bg-stone-950 px-4 py-3 text-sm text-stone-100 file:mr-4 file:rounded-xl file:border-0 file:bg-amber-500/15 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-amber-100"
+                                            class="fantasy-file mt-2 block w-full"
                                             @change="setAvatar"
                                         />
                                         <InputError class="mt-2" :message="form.errors.avatar" />
@@ -251,7 +239,7 @@ const modifierPreview = (item, value) => {
                                         <textarea
                                             id="notes"
                                             v-model="form.notes"
-                                            class="mt-2 block min-h-40 w-full rounded-[1.25rem] border border-white/10 bg-stone-950/90 px-4 py-3 text-sm text-stone-100 shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+                                            class="fantasy-textarea mt-2 block min-h-40 w-full"
                                             placeholder="Кратко опишите прошлое, мотивацию, связи или особенности героя."
                                         />
                                         <InputError class="mt-2" :message="form.errors.notes" />
@@ -260,32 +248,32 @@ const modifierPreview = (item, value) => {
                             </div>
                         </section>
 
-                        <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <section class="theme-panel">
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div>
                                     <p class="fantasy-kicker">Характеристики</p>
                                     <h2 class="mt-2 text-2xl font-semibold text-amber-50">Основные параметры</h2>
                                 </div>
-                                <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-stone-300">
+                                <div class="gm-badge">
                                     Осталось {{ attributePointBalance.available }} очков
                                 </div>
                             </div>
 
                             <div class="mt-5 grid gap-3 md:grid-cols-4">
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <div class="theme-list-row">
                                     <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Базовые очки</div>
                                     <div class="mt-2 text-xl font-semibold text-amber-50">{{ attributePointBalance.base }}</div>
                                 </div>
-                                <div class="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3">
+                                <div class="theme-list-row">
                                     <div class="text-xs uppercase tracking-[0.18em] text-emerald-200/70">Возвращено</div>
                                     <div class="mt-2 text-xl font-semibold text-emerald-100">+{{ attributePointBalance.gained }}</div>
                                 </div>
-                                <div class="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3">
+                                <div class="theme-list-row">
                                     <div class="text-xs uppercase tracking-[0.18em] text-rose-200/70">Потрачено</div>
                                     <div class="mt-2 text-xl font-semibold text-rose-100">-{{ attributePointBalance.spent }}</div>
                                 </div>
                                 <div
-                                    class="rounded-2xl border px-4 py-3"
+                                    class="theme-list-row"
                                     :class="attributePointBalance.available < 0 ? 'border-rose-400/35 bg-rose-500/15' : 'border-amber-300/20 bg-amber-300/10'"
                                 >
                                     <div class="text-xs uppercase tracking-[0.18em]" :class="attributePointBalance.available < 0 ? 'text-rose-200/80' : 'text-amber-200/70'">Осталось</div>
@@ -293,14 +281,14 @@ const modifierPreview = (item, value) => {
                                 </div>
                             </div>
 
-                            <div v-if="fieldError('attribute_values')" class="mt-5 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                            <div v-if="fieldError('attribute_values')" class="theme-empty mt-5 text-rose-200">
                                 {{ fieldError('attribute_values') }}
                             </div>
-                            <div v-else-if="attributePointBalance.available < 0" class="mt-5 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                            <div v-else-if="attributePointBalance.available < 0" class="theme-empty mt-5 text-rose-200">
                                 Баланс характеристик отрицательный. Понизьте часть значений или верните очки, чтобы сохранить персонажа.
                             </div>
 
-                            <div v-if="template.attributes.items.length === 0" class="mt-6 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
+                            <div v-if="template.attributes.items.length === 0" class="mt-6 theme-empty">
                                 В шаблоне пока нет характеристик.
                             </div>
 
@@ -308,17 +296,17 @@ const modifierPreview = (item, value) => {
                                 <article
                                     v-for="item in template.attributes.items"
                                     :key="item.key"
-                                    class="rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-amber-300/25 hover:shadow-[0_0_40px_rgba(251,191,36,0.08)]"
+                                    class="theme-card theme-card-interactive"
                                 >
                                     <div class="flex items-start justify-between gap-4">
                                         <div>
                                             <h3 class="text-lg font-semibold text-amber-50">{{ item.label }}</h3>
                                             <p class="mt-2 text-xs uppercase tracking-[0.18em] text-stone-500">
                                                 База {{ item.default ?? 0 }} · пределы {{ item.min ?? '-' }} / {{ item.max ?? '-' }}
-                                                <span v-if="item.player_editable === false"> · только GM</span>
+                                                <span v-if="item.player_editable === false"> · только мастер</span>
                                             </p>
                                         </div>
-                                        <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-stone-300">
+                                        <div class="gm-badge">
                                             {{ modifierPreview(item, form.attribute_values[item.key]) }}
                                         </div>
                                     </div>
@@ -331,10 +319,10 @@ const modifierPreview = (item, value) => {
                                             :min="item.min ?? undefined"
                                             :max="item.max ?? undefined"
                                             :disabled="item.player_editable === false"
-                                            class="block w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-lg font-semibold text-white shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+                                            class="fantasy-input block w-full text-lg font-semibold"
                                         />
                                         <p class="text-sm leading-6 text-stone-400">
-                                            <span v-if="item.player_editable === false">Это значение может менять только GM.</span>
+                                            <span v-if="item.player_editable === false">Это значение может менять только мастер.</span>
                                             <span v-else>Настройте значение для этого персонажа. Модификатор рассчитывается автоматически по параметрам шаблона.</span>
                                         </p>
                                     </div>
@@ -352,18 +340,18 @@ const modifierPreview = (item, value) => {
                             </div>
                         </section>
 
-                        <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <section class="theme-panel">
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div>
                                     <p class="fantasy-kicker">Навыки</p>
                                     <h2 class="mt-2 text-2xl font-semibold text-amber-50">Владение умениями</h2>
                                 </div>
-                                <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-stone-300">
+                                <div class="gm-badge">
                                     Активно {{ enabledSkillCount }} из {{ skillCount }}
                                 </div>
                             </div>
 
-                            <div v-if="skillGroups.length === 0" class="mt-6 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
+                            <div v-if="skillGroups.length === 0" class="mt-6 theme-empty">
                                 В шаблоне пока нет навыков.
                             </div>
 
@@ -371,28 +359,28 @@ const modifierPreview = (item, value) => {
                                 <article
                                     v-for="skill in skillGroups"
                                     :key="skill.key"
-                                    class="rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-teal-300/25 hover:shadow-[0_0_40px_rgba(45,212,191,0.08)]"
+                                    class="theme-card theme-card-interactive"
                                 >
                                     <label class="flex cursor-pointer items-start justify-between gap-4">
                                         <div>
                                             <h3 class="text-lg font-semibold text-teal-50">{{ skill.label }}</h3>
                                             <p class="mt-2 text-sm leading-6 text-stone-400">
-                                                <span v-if="skill.player_editable === false">Этот навык может менять только GM.</span>
+                                                <span v-if="skill.player_editable === false">Этот навык может менять только мастер.</span>
                                                 <span v-else>Включите навык, если персонаж действительно владеет этим направлением.</span>
                                             </p>
                                         </div>
                                         <div
-                                            class="inline-flex items-center gap-3 rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition"
+                                            class="gm-badge inline-flex items-center gap-3 py-2 transition"
                                             :class="form.skill_values[skill.key]
-                                                ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200'
-                                                : 'border-stone-600/40 bg-stone-950/80 text-stone-400'"
+                                                ? 'gm-badge-success'
+                                                : 'gm-badge-muted'"
                                         >
                                             <input
                                                 :id="`skill-${skill.key}`"
                                                 v-model="form.skill_values[skill.key]"
                                                 type="checkbox"
                                                 :disabled="skill.player_editable === false"
-                                                class="h-4 w-4 rounded border-stone-500 bg-stone-950 text-emerald-400 focus:ring-emerald-300/40"
+                                                class="h-4 w-4 rounded border-amber-300/30 bg-transparent text-emerald-400 focus:ring-emerald-300/40"
                                             />
                                             {{ form.skill_values[skill.key] ? 'Есть' : 'Нет' }}
                                         </div>
@@ -403,26 +391,26 @@ const modifierPreview = (item, value) => {
                                         <label
                                             v-for="subskill in skill.subskills"
                                             :key="subskill.key"
-                                            class="flex cursor-pointer items-center justify-between gap-4 rounded-[1.15rem] border border-white/10 bg-stone-950/75 px-4 py-3 transition hover:border-white/15"
+                                            class="theme-list-row flex cursor-pointer items-center justify-between gap-4"
                                         >
                                             <div>
                                                 <div class="font-medium text-stone-100">{{ subskill.label }}</div>
                                                 <div class="text-xs uppercase tracking-[0.18em] text-stone-500">
-                                                    Поднавык<span v-if="subskill.player_editable === false"> · только GM</span>
+                                                    Поднавык<span v-if="subskill.player_editable === false"> · только мастер</span>
                                                 </div>
                                             </div>
                                             <div
-                                                class="inline-flex items-center gap-3 rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition"
+                                                class="gm-badge inline-flex items-center gap-3 py-2 transition"
                                                 :class="form.skill_values[subskill.key]
-                                                    ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200'
-                                                    : 'border-stone-600/40 bg-stone-900/80 text-stone-400'"
+                                                    ? 'gm-badge-success'
+                                                    : 'gm-badge-muted'"
                                             >
                                                 <input
                                                     :id="`subskill-${subskill.key}`"
                                                     v-model="form.skill_values[subskill.key]"
                                                     type="checkbox"
                                                     :disabled="subskill.player_editable === false"
-                                                    class="h-4 w-4 rounded border-stone-500 bg-stone-950 text-emerald-400 focus:ring-emerald-300/40"
+                                                    class="h-4 w-4 rounded border-amber-300/30 bg-transparent text-emerald-400 focus:ring-emerald-300/40"
                                                 />
                                                 {{ form.skill_values[subskill.key] ? 'Есть' : 'Нет' }}
                                             </div>
@@ -432,7 +420,7 @@ const modifierPreview = (item, value) => {
                             </div>
                         </section>
 
-                        <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <section class="theme-panel">
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div>
                                     <p class="fantasy-kicker">Дополнительно</p>
@@ -442,18 +430,18 @@ const modifierPreview = (item, value) => {
                                     <span
                                         v-for="(limit, poolKey) in template.points ?? {}"
                                         :key="poolKey"
-                                        class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-stone-300"
+                                        class="gm-badge"
                                     >
                                         {{ poolKey }}: {{ extraPoolsSpent[poolKey] ?? 0 }} / {{ limit }}
                                     </span>
                                 </div>
                             </div>
 
-                            <div v-if="fieldError('extra_field_values')" class="mt-5 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                            <div v-if="fieldError('extra_field_values')" class="theme-empty mt-5 text-rose-200">
                                 {{ fieldError('extra_field_values') }}
                             </div>
 
-                            <div v-if="template.extra_fields.length === 0" class="mt-6 rounded-2xl border border-dashed border-stone-700/60 bg-stone-900/45 px-4 py-4 text-sm text-stone-500">
+                            <div v-if="template.extra_fields.length === 0" class="mt-6 theme-empty">
                                 Дополнительные поля в шаблоне пока не настроены.
                             </div>
 
@@ -461,7 +449,7 @@ const modifierPreview = (item, value) => {
                                 <article
                                     v-for="item in template.extra_fields"
                                     :key="item.key"
-                                    class="rounded-[1.4rem] border border-stone-700/50 bg-stone-900/80 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-amber-300/25 hover:shadow-[0_0_40px_rgba(251,191,36,0.08)]"
+                                    class="theme-card theme-card-interactive"
                                 >
                                     <div class="flex items-start justify-between gap-3">
                                         <div>
@@ -470,7 +458,7 @@ const modifierPreview = (item, value) => {
                                                 {{ item.type === 'number' ? 'Числовое поле' : 'Текстовое поле' }}
                                                 <span v-if="item.required"> · обязательно</span>
                                                 <span v-if="item.type === 'number' && item.points_pool"> · пул {{ item.points_pool }}</span>
-                                                <span v-if="item.player_editable === false"> · только GM</span>
+                                                <span v-if="item.player_editable === false"> · только мастер</span>
                                             </p>
                                         </div>
                                     </div>
@@ -484,18 +472,18 @@ const modifierPreview = (item, value) => {
                                             :min="item.min ?? undefined"
                                             :max="item.max ?? undefined"
                                             :disabled="item.player_editable === false"
-                                            class="block w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-lg font-semibold text-white shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+                                            class="fantasy-input block w-full text-lg font-semibold"
                                         />
                                         <textarea
                                             v-else
                                             :id="`extra-${item.key}`"
                                             v-model="form.extra_field_values[item.key]"
                                             :disabled="item.player_editable === false"
-                                            class="block min-h-32 w-full rounded-[1.15rem] border border-white/10 bg-stone-950 px-4 py-3 text-sm text-stone-100 shadow-sm transition focus:border-amber-300/60 focus:outline-none focus:ring-2 focus:ring-amber-300/30"
+                                            class="fantasy-textarea block min-h-32 w-full"
                                         />
                                     </div>
                                     <p v-if="item.player_editable === false" class="mt-3 text-xs uppercase tracking-[0.18em] text-stone-500">
-                                        Это поле редактируется только GM.
+                                        Это поле редактируется только мастером.
                                     </p>
 
                                     <InputError class="mt-3" :message="fieldError(`extra_field_values.${item.key}`)" />
@@ -505,35 +493,35 @@ const modifierPreview = (item, value) => {
                     </div>
 
                     <aside class="space-y-6 xl:sticky xl:top-6 xl:self-start">
-                        <section class="rounded-[1.75rem] border border-amber-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <section class="theme-panel">
                             <p class="fantasy-kicker">Быстрый контроль</p>
                             <h2 class="mt-2 text-2xl font-semibold text-amber-50">Перед сохранением</h2>
                             <div class="mt-5 space-y-3 text-sm leading-6 text-stone-300">
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <div class="theme-list-row">
                                     Проверьте имя и происхождение, чтобы персонажа было легко отличать в игре.
                                 </div>
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <div class="theme-list-row">
                                     Не превышайте лимит свободных очков у характеристик и числовых доп. полей.
                                 </div>
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <div class="theme-list-row">
                                     Включайте только те навыки, которыми герой реально владеет по задумке.
                                 </div>
                             </div>
                         </section>
 
-                        <section class="rounded-[1.75rem] border border-teal-300/15 bg-stone-950/60 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] ring-1 ring-white/5 backdrop-blur">
+                        <section class="theme-panel">
                             <p class="fantasy-kicker">Сводка</p>
                             <h2 class="mt-2 text-2xl font-semibold text-teal-50">Текущее состояние</h2>
                             <div class="mt-5 space-y-4">
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <div class="theme-list-row">
                                     <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Имя</div>
                                     <div class="mt-2 text-base font-semibold text-stone-100">{{ form.name || 'Не указано' }}</div>
                                 </div>
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <div class="theme-list-row">
                                     <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Происхождение</div>
                                     <div class="mt-2 text-base font-semibold text-stone-100">{{ form.origin || 'Не указано' }}</div>
                                 </div>
-                                <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                                <div class="theme-list-row">
                                     <div class="text-xs uppercase tracking-[0.18em] text-stone-500">Навыки</div>
                                     <div class="mt-2 text-base font-semibold text-stone-100">{{ enabledSkillCount }} активных</div>
                                 </div>
@@ -546,5 +534,5 @@ const modifierPreview = (item, value) => {
                 </div>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </GameThemeLayout>
 </template>

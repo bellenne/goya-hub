@@ -1,5 +1,5 @@
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import GameThemeLayout from '@/Layouts/GameThemeLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import { useGmSessionPresence } from '@/Composables/useGmSessionPresence';
@@ -143,11 +143,11 @@ const submitStart = () => {
 <template>
     <Head :title="session.title" />
 
-    <AuthenticatedLayout>
+    <GameThemeLayout :game="game" section="Лобби" :title="session.title">
         <template #header>
             <div class="flex items-center justify-between gap-4">
                 <div>
-                    <p class="fantasy-kicker">Lobby</p>
+                    <p class="fantasy-kicker">Лобби</p>
                     <h1 class="fantasy-title">{{ session.title }}</h1>
                 </div>
                 <Link :href="route('games.sessions.index', game.id)">
@@ -156,11 +156,11 @@ const submitStart = () => {
             </div>
         </template>
 
-        <div class="py-10">
-            <div class="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
+        <div class="theme-page">
+            <div class="theme-stack">
                 <div
                     v-if="lifecycleNotice"
-                    class="rounded-lg border px-4 py-3 text-sm"
+                    class="gm-alert px-4 py-3 text-sm"
                     :class="{
                         'border-amber-400/40 bg-amber-400/10 text-amber-100': lifecycleNotice.tone === 'warning',
                         'border-emerald-400/40 bg-emerald-400/10 text-emerald-100': lifecycleNotice.tone === 'success',
@@ -176,24 +176,24 @@ const submitStart = () => {
 
                 <div
                     v-if="page.props.flash.success"
-                    class="rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200"
+                    class="gm-alert gm-alert-success"
                 >
                     {{ page.props.flash.success }}
                 </div>
 
                 <section class="grid gap-6 lg:grid-cols-[1fr_1fr]">
-                    <div class="fantasy-panel">
+                    <div class="theme-panel">
                         <div class="flex flex-wrap items-center gap-3">
                             <div class="fantasy-chip">
                                 {{ session.status_label }}
                             </div>
                             <div class="fantasy-chip-muted">
-                                Code: {{ session.invite_code }}
+                                Код: {{ session.invite_code }}
                             </div>
                         </div>
 
                         <div class="mt-5">
-                            <p class="text-sm text-stone-400">Invite link</p>
+                            <p class="text-sm text-stone-400">Ссылка приглашения</p>
                             <input :value="session.invite_link" readonly class="fantasy-input mt-2 w-full" />
                         </div>
 
@@ -207,42 +207,42 @@ const submitStart = () => {
                         </div>
                     </div>
 
-                    <div class="fantasy-panel-muted">
+                    <div class="theme-panel">
                         <h2 class="text-lg font-semibold text-amber-50">Онлайн в лобби</h2>
                         <div v-if="onlineUsers.length === 0" class="mt-4 text-sm text-stone-400">
                             Никого онлайн.
                         </div>
                         <div v-else class="mt-4 space-y-3">
-                            <div v-for="user in onlineUsers" :key="user.id" class="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                            <div v-for="user in onlineUsers" :key="user.id" class="theme-list-row text-sm text-emerald-100">
                                 {{ user.name }} · {{ user.email }}
                             </div>
                         </div>
                     </div>
                 </section>
 
-                <section class="fantasy-panel">
+                <section class="theme-panel">
                     <div class="flex items-center justify-between gap-4">
                         <h2 class="text-lg font-semibold text-amber-50">Участники сессии</h2>
-                        <span class="text-sm text-stone-400">{{ session.participants.length }} total</span>
+                        <span class="gm-badge">{{ session.participants.length }} всего</span>
                     </div>
 
-                    <div v-if="session.participants.length === 0" class="fantasy-empty mt-4">
+                    <div v-if="session.participants.length === 0" class="theme-empty mt-4">
                         Пока никто не присоединился к лобби.
                     </div>
 
                     <div v-else class="mt-4 grid gap-3 md:grid-cols-2">
-                        <div v-for="participant in session.participants" :key="participant.id" class="fantasy-card flex items-center justify-between">
+                        <div v-for="participant in session.participants" :key="participant.id" class="theme-card flex items-center justify-between">
                             <div>
                                 <p class="font-medium text-amber-50">{{ participant.user.name }}</p>
                                 <p class="text-sm text-stone-400">{{ participant.user.email }}</p>
                             </div>
                             <div class="fantasy-chip-muted">
-                                {{ onlineUsers.some((user) => user.id === participant.user.id) ? 'online' : 'offline' }}
+                                {{ onlineUsers.some((user) => user.id === participant.user.id) ? 'онлайн' : 'офлайн' }}
                             </div>
                         </div>
                     </div>
                 </section>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </GameThemeLayout>
 </template>

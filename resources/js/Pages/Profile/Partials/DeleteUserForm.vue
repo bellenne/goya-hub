@@ -48,7 +48,7 @@ const closeModal = () => {
             </p>
         </header>
 
-        <div class="rounded-2xl border border-rose-300/15 bg-rose-500/10 px-5 py-4 text-sm leading-6 text-rose-100/90">
+        <div class="theme-empty text-rose-100/90">
             Это действие необратимо. Если вы продолжите, восстановить профиль уже не получится.
         </div>
 

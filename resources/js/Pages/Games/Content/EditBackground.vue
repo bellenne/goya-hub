@@ -1,5 +1,5 @@
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import GameThemeLayout from '@/Layouts/GameThemeLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
@@ -30,14 +30,17 @@ const submit = () => {
 </script>
 
 <template>
-    <Head :title="`Edit Background - ${background.title}`" />
+    <Head :title="`Редактирование фона - ${background.title}`" />
 
-    <AuthenticatedLayout>
+    <GameThemeLayout :game="game" section="Фоны" :title="background.title">
         <template #header>
-            <div class="flex items-center justify-between gap-4">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <p class="text-sm uppercase tracking-[0.3em] text-cyan-400/80">Backgrounds</p>
-                    <h1 class="text-2xl font-semibold text-white">Редактирование фона</h1>
+                    <p class="fantasy-kicker">Фоны</p>
+                    <h1 class="fantasy-title text-3xl">Редактирование фона</h1>
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
+                        Обновите название или изображение сцены, не затрагивая остальные материалы игры.
+                    </p>
                 </div>
                 <Link :href="route('games.backgrounds.index', game.id)">
                     <SecondaryButton>Назад к списку</SecondaryButton>
@@ -45,23 +48,39 @@ const submit = () => {
             </div>
         </template>
 
-        <div class="py-10">
-            <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-                <form class="space-y-4 rounded-3xl border border-white/10 bg-slate-900/80 p-6" @submit.prevent="submit">
-                    <div>
-                        <InputLabel for="background-title" value="Название" />
-                        <TextInput id="background-title" v-model="form.title" class="mt-2 block w-full" />
-                        <InputError class="mt-2" :message="form.errors.title" />
+        <div class="theme-page">
+            <div class="mx-auto max-w-5xl">
+                <form class="theme-panel" @submit.prevent="submit">
+                    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+                        <div class="space-y-5">
+                            <div>
+                                <InputLabel for="background-title" value="Название" />
+                                <TextInput id="background-title" v-model="form.title" class="mt-2 block w-full" />
+                                <InputError class="mt-2" :message="form.errors.title" />
+                            </div>
+                            <div>
+                                <InputLabel for="background-image" value="Новое изображение" />
+                                <input id="background-image" type="file" accept="image/*" class="fantasy-file mt-2 block w-full" @change="setImage" />
+                                <InputError class="mt-2" :message="form.errors.image" />
+                            </div>
+                        </div>
+
+                        <div class="theme-card">
+                            <p class="text-sm font-medium text-stone-300">Текущее изображение</p>
+                            <div v-if="background.image_url" class="mt-3 h-48 w-full theme-media">
+                                <img :src="background.image_url" :alt="background.title" class="h-full w-full object-contain" />
+                            </div>
+                            <div v-else class="theme-empty mt-3 grid h-48 place-items-center text-sm">
+                                Изображение не загружено
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <InputLabel for="background-image" value="Изображение" />
-                        <input id="background-image" type="file" accept="image/*" class="mt-2 block w-full rounded-md border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-100" @change="setImage" />
-                        <img v-if="background.image_url" :src="background.image_url" :alt="background.title" class="mt-3 h-40 w-full rounded-2xl object-cover" />
-                        <InputError class="mt-2" :message="form.errors.image" />
+
+                    <div class="mt-6 flex justify-end">
+                        <PrimaryButton :disabled="form.processing">Сохранить фон</PrimaryButton>
                     </div>
-                    <PrimaryButton :disabled="form.processing">Сохранить фон</PrimaryButton>
                 </form>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </GameThemeLayout>
 </template>
