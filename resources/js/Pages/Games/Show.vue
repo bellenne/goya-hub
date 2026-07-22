@@ -5,6 +5,7 @@ import FantasyButton from '@/Components/Fantasy/FantasyButton.vue';
 import GameMasterLayout from '@/Components/GameMaster/GameMasterLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import ThemeIcon from '@/Components/ThemeIcon.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
@@ -230,6 +231,21 @@ const imageFrameStyle = (key) => imageFrames.value[key] ?? {};
                 </div>
             </div>
         </template>
+
+        <nav class="app-game-navigation" aria-label="Навигация по игре">
+            <Link
+                v-for="item in sectionItems"
+                :key="item.label"
+                :href="item.href"
+                class="app-game-navigation-link"
+                :class="{ 'app-game-navigation-link-active': item.active }"
+            >
+                <span class="app-game-navigation-icon">
+                    <ThemeIcon :src="item.icon" />
+                </span>
+                <span>{{ item.label }}</span>
+            </Link>
+        </nav>
 
         <div class="theme-page">
             <div class="theme-stack">

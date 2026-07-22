@@ -1784,6 +1784,23 @@
         @apply relative;
     }
 
+    .app-game-navigation {
+        @apply mx-auto flex w-full max-w-7xl gap-2 overflow-x-auto px-4 pb-2 pt-4 sm:px-6 lg:px-8;
+        scrollbar-width: thin;
+    }
+
+    .app-game-navigation-link {
+        @apply inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-medium text-stone-300 transition hover:border-amber-300/30 hover:bg-white/[0.06] hover:text-stone-50;
+    }
+
+    .app-game-navigation-link-active {
+        @apply border-amber-300/40 bg-amber-400/10 text-amber-50 shadow-[0_10px_28px_rgba(245,158,11,0.1)];
+    }
+
+    .app-game-navigation-icon {
+        @apply h-4 w-4 text-amber-200/80;
+    }
+
     .app-top-link {
         @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-stone-300 transition hover:border-amber-300/25 hover:bg-white/[0.06] hover:text-stone-50;
     }

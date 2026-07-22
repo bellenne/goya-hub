@@ -3,6 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import GameMasterLayout from '@/Components/GameMaster/GameMasterLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import ThemeIcon from '@/Components/ThemeIcon.vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 
@@ -47,8 +48,15 @@ const props = defineProps({
 
 const page = usePage();
 const isModernTheme = computed(() => (page.props.auth?.user?.theme_preference ?? 'classic') === 'modern');
+const gameAccess = computed(() => {
+    const access = page.props.game_access;
 
-const can = (key, fallback = false) => props.game?.[key] ?? fallback;
+    return access?.id === props.game.id
+        ? { ...props.game, ...access }
+        : props.game;
+});
+
+const can = (key) => gameAccess.value?.[key] === true;
 
 const navigation = computed(() => [
     {
@@ -65,7 +73,7 @@ const navigation = computed(() => [
         href: route('games.sessions.index', props.game.id),
         active: route().current('games.sessions.*'),
         icon: '/storage/ui/icons/Sessions.png',
-        available: can('can_view_sessions', true),
+        available: can('can_view_sessions'),
     },
     {
         label: 'Персонажи',
@@ -73,7 +81,7 @@ const navigation = computed(() => [
         href: route('games.characters.index', props.game.id),
         active: route().current('games.characters.*'),
         icon: '/storage/ui/icons/Characters.png',
-        available: can('can_view_characters', true),
+        available: can('can_view_characters'),
     },
     {
         label: 'НПС',
@@ -81,7 +89,7 @@ const navigation = computed(() => [
         href: route('games.npcs.index', props.game.id),
         active: route().current('games.npcs.*'),
         icon: '/storage/ui/icons/players.png',
-        available: can('can_manage_content', true),
+        available: can('can_manage_content'),
     },
     {
         label: 'Фоны',
@@ -89,7 +97,7 @@ const navigation = computed(() => [
         href: route('games.backgrounds.index', props.game.id),
         active: route().current('games.backgrounds.*'),
         icon: '/storage/ui/icons/backgrounds.png',
-        available: can('can_manage_content', true),
+        available: can('can_manage_content'),
     },
     {
         label: 'Предметы',
@@ -97,7 +105,7 @@ const navigation = computed(() => [
         href: route('games.items.index', props.game.id),
         active: route().current('games.items.*'),
         icon: '/storage/ui/icons/inventory.png',
-        available: can('can_manage_content', true),
+        available: can('can_manage_content'),
     },
     {
         label: 'Заметки',
@@ -105,7 +113,7 @@ const navigation = computed(() => [
         href: route('games.notes.index', props.game.id),
         active: route().current('games.notes.*'),
         icon: '/storage/ui/icons/Notes.png',
-        available: can('can_manage_content', true),
+        available: can('can_manage_content'),
     },
     {
         label: 'Лист персонажа',
@@ -113,7 +121,7 @@ const navigation = computed(() => [
         href: route('games.character-template.edit', props.game.id),
         active: route().current('games.character-template.*'),
         icon: '/storage/ui/icons/Settings.png',
-        available: can('can_manage_content', true),
+        available: can('can_manage_content'),
     },
     {
         label: 'Тикеты',
@@ -121,15 +129,15 @@ const navigation = computed(() => [
         href: route('games.tickets.index', props.game.id),
         active: route().current('games.tickets.*'),
         icon: '/storage/ui/icons/Tickets.png',
-        available: can('can_view_tickets', true),
+        available: can('can_view_tickets'),
     },
     {
-        label: props.game.current_user_character_id ? 'Мой персонаж' : 'Создать персонажа',
-        description: props.game.current_user_character_id ? 'Личный лист' : 'Новый лист',
+        label: gameAccess.value.current_user_character_id ? 'Мой персонаж' : 'Создать персонажа',
+        description: gameAccess.value.current_user_character_id ? 'Личный лист' : 'Новый лист',
         href: route('games.character.edit', props.game.id),
         active: route().current('games.character.edit'),
         icon: '/storage/ui/icons/Edit.png',
-        available: can('can_edit_character', true),
+        available: can('can_edit_character'),
     },
 ].filter((item) => item.available));
 </script>
@@ -161,12 +169,27 @@ const navigation = computed(() => [
             </slot>
         </template>
 
+        <nav class="app-game-navigation" aria-label="Навигация по игре">
+            <Link
+                v-for="item in navigation"
+                :key="item.label"
+                :href="item.href"
+                class="app-game-navigation-link"
+                :class="{ 'app-game-navigation-link-active': item.active }"
+            >
+                <span class="app-game-navigation-icon">
+                    <ThemeIcon :src="item.icon" />
+                </span>
+                <span>{{ item.label }}</span>
+            </Link>
+        </nav>
+
         <slot />
     </AuthenticatedLayout>
 
     <GameMasterLayout
         v-else
-        :game="game"
+        :game="gameAccess"
         :navigation="navigation"
         :title="section"
         :subtitle="title"

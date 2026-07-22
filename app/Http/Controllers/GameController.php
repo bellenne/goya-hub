@@ -144,7 +144,9 @@ class GameController extends Controller
         $background = $canManageContent
             ? $game->backgrounds()->latest()->first()
             : null;
-        $selectedCharacter = $characters->firstWhere('is_active', true) ?? $characters->first();
+        $selectedCharacter = $characters->firstWhere('user_id', auth()->id())
+            ?? $characters->firstWhere('is_active', true)
+            ?? $characters->first();
 
         return [
             'summary' => [
