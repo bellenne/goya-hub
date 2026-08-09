@@ -23,7 +23,7 @@ class UpsertItemRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'image' => ['nullable', 'image', 'max:51200'],
+            'image' => ['nullable', 'image'],
             'category' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
         ];

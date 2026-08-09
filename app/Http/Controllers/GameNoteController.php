@@ -94,7 +94,7 @@ class GameNoteController extends Controller
         $this->authorizeNote($request, $game, $note);
 
         $validated = $request->validate([
-            'image' => ['required', 'image', 'max:51200'],
+            'image' => ['required', 'image'],
         ]);
 
         $file = $validated['image'];

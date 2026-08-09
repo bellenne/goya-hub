@@ -18,7 +18,7 @@ class UpdateSessionMusicSourceRequest extends FormRequest
         return [
             'source_type' => ['required', Rule::enum(SessionMusicSourceType::class)],
             'title' => ['nullable', 'string', 'max:255'],
-            'track' => ['nullable', 'file', 'max:20480'],
+            'track' => ['nullable', 'file'],
             'direct_url' => ['nullable', 'url', 'max:2048'],
             'youtube_url' => ['nullable', 'url', 'max:2048'],
         ];

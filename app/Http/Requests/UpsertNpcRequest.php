@@ -24,7 +24,7 @@ class UpsertNpcRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'avatar' => ['nullable', 'image', 'max:51200'],
+            'avatar' => ['nullable', 'image'],
             'type' => ['required', Rule::enum(NpcType::class)],
             'description' => ['nullable', 'string', 'max:5000'],
             'uses_character_sheet' => ['required', 'boolean'],
